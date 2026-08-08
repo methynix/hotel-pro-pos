@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { Transaction } from '../models/Transaction';
-import { sendSuccess, sendPaginated, sendError } from '../utils/response';
-import { asyncHandler } from '../middleware/errorHandler';
+import { sendSuccess, sendPaginated } from '../utils/response';
+import { AuthorizationError } from '../utils/errors';
+import { securityLogger } from '../services/securityLogger';
 
 export const transactionController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
@@ -35,8 +36,15 @@ export const transactionController = {
 
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const transaction = await Transaction.findByIdAndUpdate(req.params.id, req.body, { new: true });
-      sendSuccess(res, 200, transaction);
+      const transaction = await Transaction.findOne({ _id: req.params.id, userId: req.user?.userId });
+
+      if (!transaction) {
+        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `transaction:${req.params.id}`, req.ip || 'unknown');
+        throw new AuthorizationError('Not authorized to update this transaction');
+      }
+
+      const updated = await Transaction.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      sendSuccess(res, 200, updated);
     } catch (error) {
       next(error);
     }
@@ -44,8 +52,15 @@ export const transactionController = {
 
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
+      const transaction = await Transaction.findOne({ _id: req.params.id, userId: req.user?.userId });
+
+      if (!transaction) {
+        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `transaction:${req.params.id}`, req.ip || 'unknown');
+        throw new AuthorizationError('Not authorized to delete this transaction');
+      }
+
       await Transaction.findByIdAndDelete(req.params.id);
-      sendSuccess(res, 200, { message: 'Deleted' });
+      sendSuccess(res, 200, { message: 'Transaction deleted' });
     } catch (error) {
       next(error);
     }

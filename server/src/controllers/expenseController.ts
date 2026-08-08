@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { Expense } from '../models/Expense';
 import { sendSuccess, sendPaginated } from '../utils/response';
+import { AuthorizationError } from '../utils/errors';
+import { securityLogger } from '../services/securityLogger';
 
 export const expenseController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
@@ -34,8 +36,15 @@ export const expenseController = {
 
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const expense = await Expense.findByIdAndUpdate(req.params.id, req.body, { new: true });
-      sendSuccess(res, 200, expense);
+      const expense = await Expense.findOne({ _id: req.params.id, userId: req.user?.userId });
+
+      if (!expense) {
+        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `expense:${req.params.id}`, req.ip || 'unknown');
+        throw new AuthorizationError('Not authorized to update this expense');
+      }
+
+      const updated = await Expense.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      sendSuccess(res, 200, updated);
     } catch (error) {
       next(error);
     }
@@ -43,8 +52,15 @@ export const expenseController = {
 
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
+      const expense = await Expense.findOne({ _id: req.params.id, userId: req.user?.userId });
+
+      if (!expense) {
+        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `expense:${req.params.id}`, req.ip || 'unknown');
+        throw new AuthorizationError('Not authorized to delete this expense');
+      }
+
       await Expense.findByIdAndDelete(req.params.id);
-      sendSuccess(res, 200, { message: 'Deleted' });
+      sendSuccess(res, 200, { message: 'Expense deleted' });
     } catch (error) {
       next(error);
     }

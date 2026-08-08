@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { Account } from '../models/Account';
-import { sendSuccess, sendPaginated } from '../utils/response';
+import { sendSuccess } from '../utils/response';
+import { AuthorizationError } from '../utils/errors';
+import { securityLogger } from '../services/securityLogger';
 
 export const accountController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
@@ -26,8 +28,15 @@ export const accountController = {
 
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const account = await Account.findByIdAndUpdate(req.params.id, req.body, { new: true });
-      sendSuccess(res, 200, account);
+      const account = await Account.findOne({ _id: req.params.id, userId: req.user?.userId });
+
+      if (!account) {
+        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `account:${req.params.id}`, req.ip || 'unknown');
+        throw new AuthorizationError('Not authorized to update this account');
+      }
+
+      const updated = await Account.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      sendSuccess(res, 200, updated);
     } catch (error) {
       next(error);
     }
@@ -35,8 +44,15 @@ export const accountController = {
 
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
+      const account = await Account.findOne({ _id: req.params.id, userId: req.user?.userId });
+
+      if (!account) {
+        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `account:${req.params.id}`, req.ip || 'unknown');
+        throw new AuthorizationError('Not authorized to delete this account');
+      }
+
       await Account.findByIdAndDelete(req.params.id);
-      sendSuccess(res, 200, { message: 'Deleted' });
+      sendSuccess(res, 200, { message: 'Account deleted' });
     } catch (error) {
       next(error);
     }
