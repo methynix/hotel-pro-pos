@@ -68,7 +68,7 @@ const Login: FC = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@ledgerhq.com"
+                  placeholder="your@email.com"
                   required
                   className="w-full pl-10 pr-4 py-3 border border-border rounded-lg text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition-all"
                 />
@@ -112,33 +112,22 @@ const Login: FC = () => {
           </form>
         </div>
 
-        {/* Footer Section */}
-        <div className="mt-8 text-center">
-          <p className="text-text-secondary text-sm mb-4">Demo Credentials Available</p>
-          <div className="bg-surface border border-border rounded-lg p-4 text-left text-xs space-y-2">
-            <div>
-              <p className="font-semibold text-text-primary">Admin Account</p>
-              <p className="text-text-secondary">admin@ledgerhq.com / Admin123!@#</p>
-            </div>
-            <div className="border-t border-border pt-2">
-              <p className="font-semibold text-text-primary">Manager Account</p>
-              <p className="text-text-secondary">manager@ledgerhq.com / Manager123!@#</p>
-            </div>
-          </div>
-        </div>
-
         {/* Legal Links */}
-        <div className="mt-6 text-center text-xs text-text-secondary space-y-2">
+        <div className="mt-8 text-center text-xs text-text-secondary space-y-3">
           <div className="flex justify-center gap-3">
             <a href="/privacy" className="hover:text-accent-600 transition-colors font-medium">
               Privacy Policy
             </a>
             <span>•</span>
             <a href="/terms" className="hover:text-accent-600 transition-colors font-medium">
-              Terms
+              Terms of Service
             </a>
           </div>
-          <p className="pt-2 text-xs text-text-secondary">© 2026 ledgerHQ. All rights reserved.</p>
+          <p className="pt-2 text-xs text-text-secondary">
+            © 2026 Methynix Software. All rights reserved.<br />
+            <a href="mailto:info@methynix.com" className="hover:text-accent-600">info@methynix.com</a> • 
+            <a href="tel:0715455422" className="ml-1 hover:text-accent-600">0715455422</a>
+          </p>
         </div>
       </div>
     </div>
