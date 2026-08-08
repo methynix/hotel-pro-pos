@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { User } from '../models/User';
 import { authService } from '../services/authService';
+import { securityLogger } from '../services/securityLogger';
 import { AuthenticationError, ValidationError, ConflictError } from '../utils/errors';
 import { sendSuccess, sendError } from '../utils/response';
 
@@ -8,6 +9,7 @@ export const authController = {
   async login(req: Request, res: Response, next: NextFunction) {
     try {
       const { email, password } = req.body;
+      const ipAddress = req.ip || 'unknown';
 
       // Validate input
       if (!email || !password) {
@@ -17,13 +19,14 @@ export const authController = {
       // Find user and select password
       const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
       if (!user) {
-        // Generic error to prevent account enumeration
+        securityLogger.logFailedLogin(email, ipAddress, req.get('user-agent'));
         return authService.getGenericAuthError();
       }
 
       // Verify password
       const isPasswordValid = await user.comparePassword(password);
       if (!isPasswordValid) {
+        securityLogger.logFailedLogin(email, ipAddress, req.get('user-agent'));
         return authService.getGenericAuthError();
       }
 
@@ -80,7 +83,7 @@ export const authController = {
         email: email.toLowerCase(),
         password,
         name,
-        role: 'viewer', // Default role for new registrations
+        role: 'viewer',
       });
 
       // Generate tokens

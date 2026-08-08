@@ -6,6 +6,8 @@ import cookieParser from 'cookie-parser';
 import env from './config/env';
 import { errorHandler, asyncHandler } from './middleware/errorHandler';
 import { csrfTokenGenerator, csrfTokenValidator } from './middleware/csrf';
+import { authLimiter, generalLimiter } from './middleware/rateLimiter';
+import { noCacheMiddleware } from './middleware/cacheControl';
 import { sendSuccess, sendError } from './utils/response';
 
 // Import routes
@@ -45,6 +47,9 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
+// Cache control
+app.use(noCacheMiddleware);
+
 // ============ CSRF Protection ============
 app.use(csrfTokenGenerator);
 
@@ -58,7 +63,10 @@ app.get('/health', asyncHandler(async (req: Request, res: Response) => {
   });
 }));
 
-// API Routes
+// API Routes with rate limiting
+app.use('/api/v1/auth/login', authLimiter);
+app.use('/api/v1/auth/register', authLimiter);
+app.use('/api/v1', generalLimiter);
 app.use('/api/v1', csrfTokenValidator, v1Routes);
 
 // ============ 404 Handler ============
