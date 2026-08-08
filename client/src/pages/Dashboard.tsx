@@ -7,11 +7,10 @@ interface MetricCard {
   change: string;
   isPositive: boolean;
   icon: FC<{ className?: string }>;
-  color: string;
+  colorClass: string;
 }
 
 const Dashboard: FC = () => {
-  // Sample data - replace with real API calls
   const metrics: MetricCard[] = [
     {
       title: 'Total Inflows',
@@ -19,7 +18,7 @@ const Dashboard: FC = () => {
       change: '+12.5%',
       isPositive: true,
       icon: MdTrendingUp,
-      color: 'text-success',
+      colorClass: 'bg-success-50 text-success-600',
     },
     {
       title: 'Total Expenses',
@@ -27,7 +26,7 @@ const Dashboard: FC = () => {
       change: '-8.2%',
       isPositive: false,
       icon: MdTrendingDown,
-      color: 'text-danger',
+      colorClass: 'bg-danger-50 text-danger-600',
     },
     {
       title: 'Net Cash Flow',
@@ -35,7 +34,7 @@ const Dashboard: FC = () => {
       change: '+18.7%',
       isPositive: true,
       icon: MdAccountBalance,
-      color: 'text-accent',
+      colorClass: 'bg-accent-50 text-accent-600',
     },
     {
       title: 'Pending Actions',
@@ -43,7 +42,7 @@ const Dashboard: FC = () => {
       change: '2 new',
       isPositive: true,
       icon: MdPending,
-      color: 'text-warning',
+      colorClass: 'bg-warning-50 text-warning-600',
     },
   ];
 
@@ -62,22 +61,22 @@ const Dashboard: FC = () => {
           return (
             <div
               key={index}
-              className="bg-surface rounded-xl shadow-md border border-border hover:shadow-lg transition-shadow p-6"
+              className="bg-surface rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow p-6"
             >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-text-secondary">{metric.title}</h3>
-                <div className={`p-2 bg-opacity-10 rounded-lg ${metric.color}`}>
-                  <Icon className={`w-5 h-5 ${metric.color}`} />
+                <h3 className="text-sm font-semibold text-text-secondary">{metric.title}</h3>
+                <div className={`p-2 rounded-lg ${metric.colorClass}`}>
+                  <Icon className="w-5 h-5" />
                 </div>
               </div>
 
-              <div className="mb-2">
-                <p className="text-2xl font-bold text-text-primary">{metric.value}</p>
+              <div className="mb-3">
+                <p className="text-3xl font-bold text-text-primary">{metric.value}</p>
               </div>
 
               <p
-                className={`text-sm ${
-                  metric.isPositive ? 'text-success' : 'text-danger'
+                className={`text-sm font-medium ${
+                  metric.isPositive ? 'text-success-600' : 'text-danger-600'
                 }`}
               >
                 {metric.isPositive ? '↑' : '↓'} {metric.change}
@@ -90,11 +89,11 @@ const Dashboard: FC = () => {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Transactions */}
-        <div className="lg:col-span-2 bg-surface rounded-xl shadow-md border border-border p-6">
+        <div className="lg:col-span-2 bg-surface rounded-xl border border-border shadow-sm p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-semibold text-text-primary">Recent Transactions</h2>
-            <a href="/app/transactions" className="text-accent hover:underline text-sm font-medium">
-              View All
+            <a href="/app/transactions" className="text-accent-600 hover:text-accent-700 text-sm font-medium">
+              View All →
             </a>
           </div>
 
@@ -107,18 +106,18 @@ const Dashboard: FC = () => {
             ].map((tx, i) => (
               <div key={i} className="flex items-center justify-between pb-4 border-b border-border last:border-0">
                 <div>
-                  <p className="font-medium text-text-primary text-sm">{tx.desc}</p>
+                  <p className="font-semibold text-text-primary text-sm">{tx.desc}</p>
                   <p className="text-xs text-text-secondary">{tx.date}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <p className={`font-semibold ${tx.amount.startsWith('+') ? 'text-success' : 'text-danger'}`}>
+                  <p className={`font-semibold text-sm ${tx.amount.startsWith('+') ? 'text-success-600' : 'text-danger-600'}`}>
                     {tx.amount}
                   </p>
                   <span
-                    className={`px-2 py-1 text-xs rounded-full ${
+                    className={`px-2.5 py-1 text-xs font-medium rounded-full ${
                       tx.status === 'completed'
-                        ? 'bg-green-100 text-success'
-                        : 'bg-yellow-100 text-warning'
+                        ? 'bg-success-100 text-success-700'
+                        : 'bg-warning-100 text-warning-700'
                     }`}
                   >
                     {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
@@ -130,31 +129,31 @@ const Dashboard: FC = () => {
         </div>
 
         {/* Quick Actions */}
-        <div className="bg-surface rounded-xl shadow-md border border-border p-6">
+        <div className="bg-surface rounded-xl border border-border shadow-sm p-6">
           <h2 className="text-lg font-semibold text-text-primary mb-6">Quick Actions</h2>
 
           <div className="space-y-3">
             <a
               href="/app/transactions"
-              className="block w-full p-4 bg-gradient-to-r from-accent to-blue-700 text-white rounded-lg hover:shadow-lg transition-shadow text-center font-medium"
+              className="block w-full p-3 bg-accent-600 hover:bg-accent-700 text-white rounded-lg font-medium text-center transition-colors shadow-sm hover:shadow-md"
             >
               New Transaction
             </a>
             <a
               href="/app/expenses"
-              className="block w-full p-4 bg-gradient-to-r from-warning to-orange-500 text-white rounded-lg hover:shadow-lg transition-shadow text-center font-medium"
+              className="block w-full p-3 bg-warning-500 hover:bg-warning-600 text-white rounded-lg font-medium text-center transition-colors shadow-sm hover:shadow-md"
             >
               Log Expense
             </a>
             <a
               href="/app/reports"
-              className="block w-full p-4 bg-gradient-to-r from-primary to-secondary text-white rounded-lg hover:shadow-lg transition-shadow text-center font-medium"
+              className="block w-full p-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-center transition-colors shadow-sm hover:shadow-md"
             >
               Generate Report
             </a>
             <a
               href="/app/accounts"
-              className="block w-full p-4 border-2 border-accent text-accent rounded-lg hover:bg-blue-50 transition-colors text-center font-medium"
+              className="block w-full p-3 border-2 border-accent-600 text-accent-600 hover:bg-accent-50 rounded-lg font-medium text-center transition-colors"
             >
               View Accounts
             </a>
@@ -162,26 +161,26 @@ const Dashboard: FC = () => {
 
           {/* Stats */}
           <div className="mt-8 pt-6 border-t border-border">
-            <h3 className="text-sm font-medium text-text-secondary mb-4">This Month</h3>
-            <div className="space-y-3">
-              <div>
+            <h3 className="text-sm font-semibold text-text-secondary mb-4">This Month</h3>
+            <div className="space-y-4">
+              <div className="p-3 bg-primary-50 rounded-lg">
                 <p className="text-xs text-text-secondary mb-1">Transactions</p>
-                <p className="text-xl font-bold text-text-primary">24</p>
+                <p className="text-2xl font-bold text-text-primary">24</p>
               </div>
-              <div>
+              <div className="p-3 bg-accent-50 rounded-lg">
                 <p className="text-xs text-text-secondary mb-1">Total Volume</p>
-                <p className="text-xl font-bold text-text-primary">$156,430</p>
+                <p className="text-2xl font-bold text-text-primary">$156,430</p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Chart placeholder */}
-      <div className="bg-surface rounded-xl shadow-md border border-border p-6">
+      {/* Charts Placeholder */}
+      <div className="bg-surface rounded-xl border border-border shadow-sm p-8">
         <h2 className="text-lg font-semibold text-text-primary mb-6">Cash Flow Trend</h2>
-        <div className="h-64 flex items-center justify-center bg-background rounded-lg">
-          <p className="text-text-secondary">Chart coming soon...</p>
+        <div className="h-64 flex items-center justify-center bg-background rounded-lg border border-border border-dashed">
+          <p className="text-text-secondary">Analytics coming soon...</p>
         </div>
       </div>
     </div>

@@ -29,28 +29,36 @@ const Login: FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary to-secondary flex items-center justify-center px-4">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
+      {/* Top accent bar */}
+      <div className="absolute top-0 left-0 right-0 h-1 bg-accent-600" />
+
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <img
-            src="/logoHQ.jpg"
-            alt="ledgerHQ"
-            className="w-16 h-16 rounded-2xl mx-auto mb-4 object-cover shadow-lg"
-          />
-          <h1 className="text-3xl font-bold text-white mb-2">ledgerHQ</h1>
-          <p className="text-gray-300">Financial Management Dashboard</p>
+        {/* Logo Section */}
+        <div className="mb-12 text-center">
+          <div className="mb-6 inline-block p-4 bg-primary-50 rounded-2xl shadow-md">
+            <img
+              src="/logoHQ.jpg"
+              alt="ledgerHQ"
+              className="w-16 h-16 rounded-xl object-cover"
+            />
+          </div>
+          <h1 className="text-4xl font-bold text-text-primary mb-2">ledgerHQ</h1>
+          <p className="text-text-secondary text-sm font-medium">Financial Management Dashboard</p>
         </div>
 
-        <div className="bg-surface rounded-xl shadow-2xl p-8 mb-6">
+        {/* Login Card */}
+        <div className="bg-surface rounded-2xl shadow-lg p-8 border border-border">
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-danger rounded-lg">
-              <p className="text-sm text-danger">{error}</p>
+            <div className="mb-6 p-4 bg-danger-50 border-l-4 border-danger-500 rounded-lg">
+              <p className="text-sm text-danger-700">{error}</p>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Email Field */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-text-primary mb-2">
+              <label htmlFor="email" className="block text-sm font-semibold text-text-primary mb-2">
                 Email Address
               </label>
               <div className="relative">
@@ -60,15 +68,16 @@ const Login: FC = () => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@ledger.com"
+                  placeholder="admin@ledgerhq.com"
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                  className="w-full pl-10 pr-4 py-3 border border-border rounded-lg text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition-all"
                 />
               </div>
             </div>
 
+            {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-text-primary mb-2">
+              <label htmlFor="password" className="block text-sm font-semibold text-text-primary mb-2">
                 Password
               </label>
               <div className="relative">
@@ -80,39 +89,56 @@ const Login: FC = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full pl-10 pr-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent transition-all"
+                  className="w-full pl-10 pr-4 py-3 border border-border rounded-lg text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition-all"
                 />
               </div>
             </div>
 
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 bg-accent hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-6"
+              className="w-full py-3 mt-7 bg-accent-600 hover:bg-accent-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
             >
               {isLoading ? (
                 <div className="flex items-center justify-center gap-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Logging in...</span>
+                  <span>Signing in...</span>
                 </div>
               ) : (
-                'Login'
+                'Sign In'
               )}
             </button>
           </form>
         </div>
 
-        <div className="text-center text-gray-300 text-sm">
-          <p>Demo credentials available on request</p>
-          <div className="mt-4 flex justify-center gap-4">
-            <a href="/privacy" className="hover:text-white transition-colors">
+        {/* Footer Section */}
+        <div className="mt-8 text-center">
+          <p className="text-text-secondary text-sm mb-4">Demo Credentials Available</p>
+          <div className="bg-surface border border-border rounded-lg p-4 text-left text-xs space-y-2">
+            <div>
+              <p className="font-semibold text-text-primary">Admin Account</p>
+              <p className="text-text-secondary">admin@ledgerhq.com / Admin123!@#</p>
+            </div>
+            <div className="border-t border-border pt-2">
+              <p className="font-semibold text-text-primary">Manager Account</p>
+              <p className="text-text-secondary">manager@ledgerhq.com / Manager123!@#</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Legal Links */}
+        <div className="mt-6 text-center text-xs text-text-secondary space-y-2">
+          <div className="flex justify-center gap-3">
+            <a href="/privacy" className="hover:text-accent-600 transition-colors font-medium">
               Privacy Policy
             </a>
-            <span className="text-gray-500">•</span>
-            <a href="/terms" className="hover:text-white transition-colors">
+            <span>•</span>
+            <a href="/terms" className="hover:text-accent-600 transition-colors font-medium">
               Terms
             </a>
           </div>
+          <p className="pt-2 text-xs text-text-secondary">© 2026 ledgerHQ. All rights reserved.</p>
         </div>
       </div>
     </div>
