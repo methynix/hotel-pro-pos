@@ -1,8 +1,8 @@
 import { FC, ReactNode, useEffect, useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AuthContext, AuthContextType } from '@/contexts/AuthContext';
-import { authService } from '@/services/authService';
-import { AuthUser } from '@/types';
+import { AuthContext, AuthContextType } from '../contexts/AuthContext';
+import { authService } from '../services/authService';
+import { AuthUser } from '../types';
 
 interface AuthProviderProps {
   children: ReactNode;
