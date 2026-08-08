@@ -1,5 +1,6 @@
-import { FC } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { MdTrendingUp, MdTrendingDown, MdAccountBalance, MdPending } from 'react-icons/md';
+import { analyticsService, DashboardMetrics, CategorySpending, DailyTrend } from '../services/analyticsService';
 
 interface MetricCard {
   title: string;
@@ -11,35 +12,67 @@ interface MetricCard {
 }
 
 const Dashboard: FC = () => {
-  const metrics: MetricCard[] = [
+  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [topCategories, setTopCategories] = useState<CategorySpending[]>([]);
+  const [cashFlow, setCashFlow] = useState<DailyTrend[]>([]);
+  const [timeframe, setTimeframe] = useState<'month' | 'quarter' | 'year'>('month');
+
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        setLoading(true);
+        const data = await analyticsService.getFullDashboardData(timeframe);
+        setMetrics(data.metrics);
+        setTopCategories(data.topCategories);
+        setCashFlow(data.cashFlowTrend);
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboardData();
+  }, [timeframe]);
+
+  if (loading || !metrics) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <p className="text-text-secondary">Loading dashboard...</p>
+      </div>
+    );
+  }
+
+  const metricCards: MetricCard[] = [
     {
       title: 'Total Inflows',
-      value: '$45,230.50',
-      change: '+12.5%',
-      isPositive: true,
+      value: `$${metrics.totalInflows.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      change: `${metrics.inflowsChange >= 0 ? '+' : ''}${metrics.inflowsChange.toFixed(1)}%`,
+      isPositive: metrics.inflowsChange >= 0,
       icon: MdTrendingUp,
       colorClass: 'bg-success-50 text-success-600',
     },
     {
       title: 'Total Expenses',
-      value: '$12,450.00',
-      change: '-8.2%',
-      isPositive: false,
+      value: `$${metrics.totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      change: `${metrics.expensesChange >= 0 ? '+' : ''}${metrics.expensesChange.toFixed(1)}%`,
+      isPositive: metrics.expensesChange <= 0,
       icon: MdTrendingDown,
       colorClass: 'bg-danger-50 text-danger-600',
     },
     {
       title: 'Net Cash Flow',
-      value: '$32,780.50',
-      change: '+18.7%',
-      isPositive: true,
+      value: `$${metrics.netCashFlow.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      change: metrics.netCashFlow >= 0 ? 'Positive' : 'Negative',
+      isPositive: metrics.netCashFlow >= 0,
       icon: MdAccountBalance,
       colorClass: 'bg-accent-50 text-accent-600',
     },
     {
       title: 'Pending Actions',
-      value: '5',
-      change: '2 new',
+      value: metrics.pendingCount.toString(),
+      change: `${metrics.transactionCount} total transactions`,
       isPositive: true,
       icon: MdPending,
       colorClass: 'bg-warning-50 text-warning-600',
@@ -49,14 +82,31 @@ const Dashboard: FC = () => {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div>
-        <h1 className="text-4xl font-bold text-text-primary mb-2">Dashboard</h1>
-        <p className="text-text-secondary">Welcome to ledgerHQ - Your Financial Intelligence Hub</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-4xl font-bold text-text-primary mb-2">Dashboard</h1>
+          <p className="text-text-secondary">Welcome to ledgerHQ - Your Financial Intelligence Hub</p>
+        </div>
+        <div className="flex gap-2">
+          {(['month', 'quarter', 'year'] as const).map(tf => (
+            <button
+              key={tf}
+              onClick={() => setTimeframe(tf)}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                timeframe === tf
+                  ? 'bg-accent-600 text-white'
+                  : 'bg-surface border border-border text-text-primary hover:border-accent-600'
+              }`}
+            >
+              {tf.charAt(0).toUpperCase() + tf.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {metrics.map((metric, index) => {
+        {metricCards.map((metric, index) => {
           const Icon = metric.icon;
           return (
             <div
@@ -74,11 +124,7 @@ const Dashboard: FC = () => {
                 <p className="text-3xl font-bold text-text-primary">{metric.value}</p>
               </div>
 
-              <p
-                className={`text-sm font-medium ${
-                  metric.isPositive ? 'text-success-600' : 'text-danger-600'
-                }`}
-              >
+              <p className={`text-sm font-medium ${metric.isPositive ? 'text-success-600' : 'text-danger-600'}`}>
                 {metric.isPositive ? '↑' : '↓'} {metric.change}
               </p>
             </div>
@@ -88,44 +134,33 @@ const Dashboard: FC = () => {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Transactions */}
+        {/* Top Spending Categories */}
         <div className="lg:col-span-2 bg-surface rounded-xl border border-border shadow-sm p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-text-primary">Recent Transactions</h2>
-            <a href="/app/transactions" className="text-accent-600 hover:text-accent-700 text-sm font-medium">
-              View All →
-            </a>
-          </div>
+          <h2 className="text-lg font-semibold text-text-primary mb-6">Top Spending Categories</h2>
 
-          <div className="space-y-4">
-            {[
-              { date: 'Today', amount: '+$1,250', desc: 'Client Payment', status: 'completed' },
-              { date: 'Yesterday', amount: '-$450', desc: 'Expense Reimbursement', status: 'completed' },
-              { date: '2 days ago', amount: '+$3,200', desc: 'Invoice Payment', status: 'completed' },
-              { date: '3 days ago', amount: '-$200', desc: 'Supplier Payment', status: 'pending' },
-            ].map((tx, i) => (
-              <div key={i} className="flex items-center justify-between pb-4 border-b border-border last:border-0">
-                <div>
-                  <p className="font-semibold text-text-primary text-sm">{tx.desc}</p>
-                  <p className="text-xs text-text-secondary">{tx.date}</p>
+          {topCategories.length > 0 ? (
+            <div className="space-y-4">
+              {topCategories.map((cat, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-text-primary">{cat.category}</span>
+                    <span className="text-sm font-bold text-text-primary">
+                      ${cat.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <div className="w-full bg-background rounded-full h-2">
+                    <div
+                      className="bg-danger-500 h-2 rounded-full transition-all"
+                      style={{ width: `${cat.percentage}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-text-secondary">{cat.percentage.toFixed(1)}%</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <p className={`font-semibold text-sm ${tx.amount.startsWith('+') ? 'text-success-600' : 'text-danger-600'}`}>
-                    {tx.amount}
-                  </p>
-                  <span
-                    className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                      tx.status === 'completed'
-                        ? 'bg-success-100 text-success-700'
-                        : 'bg-warning-100 text-warning-700'
-                    }`}
-                  >
-                    {tx.status.charAt(0).toUpperCase() + tx.status.slice(1)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-text-secondary">No spending data available</p>
+          )}
         </div>
 
         {/* Quick Actions */}
@@ -159,29 +194,72 @@ const Dashboard: FC = () => {
             </a>
           </div>
 
-          {/* Stats */}
           <div className="mt-8 pt-6 border-t border-border">
-            <h3 className="text-sm font-semibold text-text-secondary mb-4">This Month</h3>
+            <h3 className="text-sm font-semibold text-text-secondary mb-4">Summary</h3>
             <div className="space-y-4">
               <div className="p-3 bg-primary-50 rounded-lg">
-                <p className="text-xs text-text-secondary mb-1">Transactions</p>
-                <p className="text-2xl font-bold text-text-primary">24</p>
+                <p className="text-xs text-text-secondary mb-1">Total Transactions</p>
+                <p className="text-2xl font-bold text-text-primary">{metrics.transactionCount}</p>
               </div>
               <div className="p-3 bg-accent-50 rounded-lg">
-                <p className="text-xs text-text-secondary mb-1">Total Volume</p>
-                <p className="text-2xl font-bold text-text-primary">$156,430</p>
+                <p className="text-xs text-text-secondary mb-1">Account Balance</p>
+                <p className="text-2xl font-bold text-text-primary">
+                  ${metrics.accountBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Charts Placeholder */}
+      {/* Cash Flow Trend */}
       <div className="bg-surface rounded-xl border border-border shadow-sm p-8">
-        <h2 className="text-lg font-semibold text-text-primary mb-6">Cash Flow Trend</h2>
-        <div className="h-64 flex items-center justify-center bg-background rounded-lg border border-border border-dashed">
-          <p className="text-text-secondary">Analytics coming soon...</p>
-        </div>
+        <h2 className="text-lg font-semibold text-text-primary mb-6">30-Day Cash Flow Trend</h2>
+        {cashFlow.length > 0 ? (
+          <div className="overflow-x-auto">
+            <div className="flex gap-4 min-w-max" style={{ height: '200px', alignItems: 'flex-end' }}>
+              {cashFlow.map((day, i) => {
+                const maxAmount = Math.max(...cashFlow.flatMap(d => [d.inflow, d.outflow])) || 1;
+                const inflowHeight = (day.inflow / maxAmount) * 150;
+                const outflowHeight = (day.outflow / maxAmount) * 150;
+
+                return (
+                  <div key={i} className="flex flex-col items-center gap-2">
+                    <div className="flex gap-1" style={{ alignItems: 'flex-end' }}>
+                      {day.inflow > 0 && (
+                        <div
+                          className="w-2 bg-success-500 rounded"
+                          style={{ height: `${inflowHeight}px` }}
+                          title={`Inflow: $${day.inflow.toFixed(2)}`}
+                        />
+                      )}
+                      {day.outflow > 0 && (
+                        <div
+                          className="w-2 bg-danger-500 rounded"
+                          style={{ height: `${outflowHeight}px` }}
+                          title={`Outflow: $${day.outflow.toFixed(2)}`}
+                        />
+                      )}
+                    </div>
+                    <span className="text-xs text-text-secondary">{day.date.slice(-2)}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-6 flex gap-6 justify-center">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-success-500 rounded" />
+                <span className="text-sm text-text-secondary">Inflow</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-danger-500 rounded" />
+                <span className="text-sm text-text-secondary">Outflow</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-text-secondary text-center py-8">No transaction data available</p>
+        )}
       </div>
     </div>
   );
