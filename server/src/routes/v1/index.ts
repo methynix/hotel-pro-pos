@@ -7,6 +7,9 @@ import categoryRoutes from './categories';
 import userRoutes from './users';
 import receiptRoutes from './receipts';
 import analyticsRoutes from './analytics';
+import recurringRoutes from './recurringTransactions';
+import budgetRoutes from './budgets';
+import reportRoutes from './reports';
 
 const router = Router();
 
@@ -19,5 +22,8 @@ router.use('/categories', categoryRoutes);
 router.use('/users', userRoutes);
 router.use('/receipts', receiptRoutes);
 router.use('/analytics', analyticsRoutes);
+router.use('/recurring-transactions', recurringRoutes);
+router.use('/budgets', budgetRoutes);
+router.use('/reports', reportRoutes);
 
 export default router;
