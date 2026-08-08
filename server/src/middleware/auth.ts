@@ -1,12 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
 import { authService } from '../services/authService';
 import { AuthenticationError, AuthorizationError } from '../utils/errors';
-import { AuthRequest, UserRole } from '../types/api';
+import { UserRole } from '../types/api';
 
 declare global {
   namespace Express {
     interface Request {
-      user?: AuthRequest;
+      user?: {
+        userId: string;
+        email: string;
+        role: UserRole;
+      };
     }
   }
 }

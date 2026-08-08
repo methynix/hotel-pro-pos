@@ -14,7 +14,6 @@ export const errorHandler = (
     code: error instanceof AppError ? error.code : 'INTERNAL_ERROR',
     path: req.path,
     method: req.method,
-    // NO: userId, body, password, tokens, etc.
   });
 
   if (error instanceof AppError) {

@@ -5,9 +5,11 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import env from './config/env';
 import { errorHandler, asyncHandler } from './middleware/errorHandler';
-import { authenticate } from './middleware/auth';
 import { csrfTokenGenerator, csrfTokenValidator } from './middleware/csrf';
-import { sendSuccess } from './utils/response';
+import { sendSuccess, sendError } from './utils/response';
+
+// Import routes
+import v1Routes from './routes/v1';
 
 const app: Application = express();
 
@@ -47,28 +49,21 @@ app.use(cookieParser());
 app.use(csrfTokenGenerator);
 
 // ============ Routes ============
+
 // Health check (no auth needed)
 app.get('/health', asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, 200, {
     status: 'healthy',
     timestamp: new Date().toISOString(),
-  }, 'Server is running');
+  });
 }));
 
-// Auth routes (no auth needed)
-// TODO: Create auth routes
-
-// Protected routes (require auth)
-app.use('/api/v1', csrfTokenValidator);
-app.use('/api/v1', authenticate);
-// TODO: Create protected routes
+// API Routes
+app.use('/api/v1', csrfTokenValidator, v1Routes);
 
 // ============ 404 Handler ============
 app.use((req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    error: { code: 'NOT_FOUND', message: 'Route not found' },
-  });
+  sendError(res, 404, 'NOT_FOUND', 'Route not found');
 });
 
 // ============ Error Handler ============
