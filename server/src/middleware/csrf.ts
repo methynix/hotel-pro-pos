@@ -3,7 +3,11 @@ import crypto from 'crypto';
 import env from '../config/env';
 import { ValidationError } from '../utils/errors';
 
-const CSRF_COOKIE_NAME = '__Host-csrf-token';
+// The __Host- prefix requires the Secure attribute unconditionally — browsers
+// (and curl) silently refuse to store such a cookie over plain HTTP. Only use
+// the prefix when we can actually satisfy it (HTTPS_ONLY), so local/HTTP
+// testing isn't silently broken.
+const CSRF_COOKIE_NAME = env.HTTPS_ONLY ? '__Host-csrf-token' : 'csrf-token';
 
 export const csrfTokenGenerator = (req: Request, res: Response, next: NextFunction): void => {
   // Generate CSRF token
