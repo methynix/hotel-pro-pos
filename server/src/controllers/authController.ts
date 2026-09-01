@@ -4,6 +4,7 @@ import { authService } from '../services/authService';
 import { securityLogger } from '../services/securityLogger';
 import { AuthenticationError, ValidationError, ConflictError } from '../utils/errors';
 import { sendSuccess, sendError } from '../utils/response';
+import env from '../config/env';
 
 export const authController = {
   async login(req: Request, res: Response, next: NextFunction) {
@@ -40,8 +41,8 @@ export const authController = {
       // Set refresh token in HttpOnly cookie
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: env.HTTPS_ONLY,
+        sameSite: env.HTTPS_ONLY ? 'none' : 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
 
@@ -96,8 +97,8 @@ export const authController = {
       // Set refresh token cookie
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: env.HTTPS_ONLY,
+        sameSite: env.HTTPS_ONLY ? 'none' : 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
 
@@ -135,7 +136,11 @@ export const authController = {
 
   async logout(req: Request, res: Response, next: NextFunction) {
     try {
-      res.clearCookie('refreshToken');
+      res.clearCookie('refreshToken', {
+        httpOnly: true,
+        secure: env.HTTPS_ONLY,
+        sameSite: env.HTTPS_ONLY ? 'none' : 'lax',
+      });
       sendSuccess(res, 200, { message: 'Logged out successfully' });
     } catch (error) {
       next(error);

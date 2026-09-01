@@ -46,6 +46,5 @@ const ReceiptSchema = new Schema<IReceipt>(
 );
 
 ReceiptSchema.index({ userId: 1, createdAt: -1 });
-ReceiptSchema.index({ receiptNumber: 1 });
 
 export const Receipt = mongoose.model<IReceipt>('Receipt', ReceiptSchema);

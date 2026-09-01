@@ -15,13 +15,21 @@ export const csrfTokenGenerator = (req: Request, res: Response, next: NextFuncti
 
   const fullToken = `${token}.${signature}`;
 
-  // Set as HttpOnly cookie
+  // Set as HttpOnly cookie (server-side half of the double-submit check)
   res.cookie(CSRF_COOKIE_NAME, fullToken, {
     httpOnly: true,
     secure: env.HTTPS_ONLY,
-    sameSite: 'strict',
+    // Client and server are deployed on different origins, so the cookie
+    // must be SameSite=None to be sent at all; that requires Secure, which
+    // is why this is tied to HTTPS_ONLY (must be true in production).
+    sameSite: env.HTTPS_ONLY ? 'none' : 'lax',
     maxAge: 60 * 60 * 24 * 7, // 7 days
   });
+
+  // Expose the plaintext token so the SPA can echo it back as the
+  // x-csrf-token header — the cookie itself stays HttpOnly and unreadable
+  // to client JS, which is what makes the double-submit check meaningful.
+  res.set('x-csrf-token', token);
 
   next();
 };

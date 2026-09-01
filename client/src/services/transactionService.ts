@@ -1,7 +1,7 @@
 import axiosInstance from './api';
 import { Transaction, TransactionFilters, ApiResponse, PaginatedResponse } from '../types';
 
-const TRANSACTION_BASE_URL = '/sales';
+const TRANSACTION_BASE_URL = '/transactions';
 
 export const transactionService = {
   async getAllTransactions(filters: TransactionFilters = {}) {
@@ -28,7 +28,7 @@ export const transactionService = {
   },
 
   async updateTransaction(id: string, transactionData: Partial<Transaction>) {
-    const response = await axiosInstance.put<ApiResponse<Transaction>>(
+    const response = await axiosInstance.patch<ApiResponse<Transaction>>(
       `${TRANSACTION_BASE_URL}/${id}`,
       transactionData
     );

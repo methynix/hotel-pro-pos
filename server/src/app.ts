@@ -15,6 +15,11 @@ import v1Routes from './routes/v1';
 
 const app: Application = express();
 
+// Required behind a reverse proxy (Render/Railway/Heroku/Nginx) so
+// req.secure and X-Forwarded-For are read correctly, and so
+// express-rate-limit doesn't throw on the forwarded header.
+app.set('trust proxy', 1);
+
 // ============ Security Middleware ============
 app.use(helmet({
   contentSecurityPolicy: {
@@ -41,6 +46,7 @@ app.use(cors({
   origin: [env.CLIENT_URL, 'http://localhost:5173'],
   credentials: true,
   allowedHeaders: ['Content-Type', 'x-csrf-token'],
+  exposedHeaders: ['x-csrf-token'],
 }));
 
 app.use(express.json({ limit: '1mb' }));

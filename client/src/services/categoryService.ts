@@ -28,7 +28,7 @@ export const categoryService = {
   },
 
   async updateCategory(id: string, categoryData: Partial<Category>) {
-    const response = await axiosInstance.put<ApiResponse<Category>>(
+    const response = await axiosInstance.patch<ApiResponse<Category>>(
       `${CATEGORY_BASE_URL}/${id}`,
       categoryData
     );

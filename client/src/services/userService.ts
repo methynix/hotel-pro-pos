@@ -28,7 +28,7 @@ export const userService = {
   },
 
   async updateUser(id: string, userData: Partial<User>) {
-    const response = await axiosInstance.put<ApiResponse<User>>(
+    const response = await axiosInstance.patch<ApiResponse<User>>(
       `${USER_BASE_URL}/${id}`,
       userData
     );
