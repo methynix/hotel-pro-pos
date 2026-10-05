@@ -1,4 +1,5 @@
 import axiosInstance from './api';
+import { tokenStorage } from '../utils/tokenStorage';
 import { AuthUser, LoginCredentials, RegisterData, AuthResponse, ApiResponse } from '../types';
 
 const AUTH_BASE_URL = '/auth';
@@ -34,21 +35,16 @@ export const authService = {
     return response.data;
   },
 
-  setToken(token: string) {
-    localStorage.setItem('token', token);
-  },
-
-  setRefreshToken(token: string) {
-    localStorage.setItem('refreshToken', token);
+  setToken(token: string, remember: boolean) {
+    tokenStorage.set(token, remember);
   },
 
   getToken() {
-    return localStorage.getItem('token');
+    return tokenStorage.get();
   },
 
   clearTokens() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
+    tokenStorage.clear();
   },
 
   isAuthenticated() {

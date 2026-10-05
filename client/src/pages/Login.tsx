@@ -7,6 +7,7 @@ const Login: FC = () => {
   const { login, isAuthenticated } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -20,7 +21,7 @@ const Login: FC = () => {
     setIsLoading(true);
 
     try {
-      await login(email, password);
+      await login(email, password, rememberMe);
     } catch (err: any) {
       setError(err?.message || 'Login failed. Please try again.');
     } finally {
@@ -93,6 +94,18 @@ const Login: FC = () => {
                 />
               </div>
             </div>
+
+            {/* Remember Me */}
+            <label htmlFor="rememberMe" className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                id="rememberMe"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded border-border text-accent-600 focus:ring-2 focus:ring-accent-500 cursor-pointer"
+              />
+              <span className="text-sm text-text-primary">Remember me</span>
+            </label>
 
             {/* Submit Button */}
             <button

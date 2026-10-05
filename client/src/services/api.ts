@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { ApiError } from '../types';
+import { tokenStorage } from '../utils/tokenStorage';
 
 const axiosInstance: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_APP_BASE_URL || 'http://localhost:5000/api/v1',
@@ -36,7 +37,7 @@ function primeCsrfToken(): Promise<string | null> {
 
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('token');
+    const token = tokenStorage.get();
     if (token) config.headers.Authorization = `Bearer ${token}`;
 
     const method = config.method?.toLowerCase();
@@ -65,8 +66,7 @@ axiosInstance.interceptors.response.use(
     if (freshToken) csrfToken = freshToken;
 
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refreshToken');
+      tokenStorage.clear();
       window.dispatchEvent(new Event('auth-logout'));
       if (!window.location.pathname.includes('/login')) window.location.href = '/';
     }

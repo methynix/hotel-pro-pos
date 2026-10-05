@@ -11,12 +11,12 @@ interface AuthProviderProps {
 export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
   const queryClient = useQueryClient();
   const [token, setToken] = useState<string | null>(() =>
-    typeof window !== 'undefined' ? localStorage.getItem('token') : null
+    typeof window !== 'undefined' ? authService.getToken() : null
   );
   const [isInitialized, setIsInitialized] = useState(false);
 
   const syncToken = useCallback(() => {
-    const t = localStorage.getItem('token');
+    const t = authService.getToken();
     setToken(t);
   }, []);
 
@@ -66,9 +66,9 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
   // Login and register both respond with an access token + user, so they
   // share the same success/failure handling.
   const authMutationOptions = {
-    onSuccess: (data: ApiResponse<AuthResponse>) => {
+    onSuccess: (data: ApiResponse<AuthResponse>, variables: { remember: boolean }) => {
       const { accessToken } = data.data;
-      authService.setToken(accessToken);
+      authService.setToken(accessToken, variables.remember);
       setToken(accessToken);
       queryClient.setQueryData(['currentUser'], data.data.user);
     },
@@ -86,13 +86,13 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
   };
 
   const loginMutation = useMutation({
-    mutationFn: async (credentials: LoginCredentials) =>
+    mutationFn: async ({ remember: _remember, ...credentials }: LoginCredentials & { remember: boolean }) =>
       requireAccessToken(await authService.login(credentials)),
     ...authMutationOptions,
   });
 
   const registerMutation = useMutation({
-    mutationFn: async (data: RegisterData) =>
+    mutationFn: async ({ remember: _remember, ...data }: RegisterData & { remember: boolean }) =>
       requireAccessToken(await authService.register(data)),
     ...authMutationOptions,
   });
@@ -111,11 +111,12 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
     user: currentUser ?? null,
     isLoading,
     isAuthenticated: !!token && !!currentUser,
-    login: async (email: string, password: string) => {
-      await loginMutation.mutateAsync({ email, password });
+    login: async (email: string, password: string, remember = false) => {
+      await loginMutation.mutateAsync({ email, password, remember });
     },
+    // A fresh sign-up has no "Remember me" choice yet, so keep them signed in.
     register: async (name: string, email: string, password: string) => {
-      await registerMutation.mutateAsync({ name, email, password });
+      await registerMutation.mutateAsync({ name, email, password, remember: true });
     },
     logout: async () => {
       await logoutMutation.mutateAsync();
