@@ -1,6 +1,7 @@
 import { RouteObject } from 'react-router-dom';
 import App from '../App';
 import Login from '../pages/Login';
+import Signup from '../pages/Signup';
 import Dashboard from '../pages/Dashboard';
 import TransactionManagement from '../pages/TransactionManagement';
 import ExpenseManagement from '../pages/ExpenseManagement';
@@ -70,6 +71,10 @@ export const routes: RouteObject[] = [
             element: <Settings />,
           },
         ],
+      },
+      {
+        path: 'signup',
+        element: <Signup />,
       },
       {
         path: 'privacy',

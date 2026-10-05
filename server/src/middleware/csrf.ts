@@ -27,7 +27,7 @@ export const csrfTokenGenerator = (req: Request, res: Response, next: NextFuncti
     // must be SameSite=None to be sent at all; that requires Secure, which
     // is why this is tied to HTTPS_ONLY (must be true in production).
     sameSite: env.HTTPS_ONLY ? 'none' : 'lax',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (Express expects ms)
   });
 
   // Expose the plaintext token so the SPA can echo it back as the

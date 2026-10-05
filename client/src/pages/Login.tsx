@@ -1,5 +1,5 @@
 import { FC, useState, FormEvent } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { MdMail, MdLock } from 'react-icons/md';
 
@@ -110,6 +110,13 @@ const Login: FC = () => {
               )}
             </button>
           </form>
+
+          <p className="mt-6 text-center text-sm text-text-secondary">
+            Don't have an account?{' '}
+            <Link to="/signup" className="font-semibold text-accent-600 hover:text-accent-700">
+              Sign up
+            </Link>
+          </p>
         </div>
 
         {/* Legal Links */}

@@ -28,9 +28,20 @@ export interface EnvVars {
   LOG_LEVEL: 'error' | 'warn' | 'info' | 'debug';
 }
 
+function trimEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  // Dashboard env-var UIs (Render, etc.) don't always strip trailing
+  // whitespace/newlines from pasted values, which silently fails strict
+  // enum checks like NODE_ENV below. Trim everything before validating.
+  const trimmed: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(env)) {
+    trimmed[key] = typeof value === 'string' ? value.trim() : value;
+  }
+  return trimmed;
+}
+
 export function validateEnv(): EnvVars {
   try {
-    const raw = envSchema.parse(process.env);
+    const raw = envSchema.parse(trimEnv(process.env));
     return {
       ...raw,
       HTTPS_ONLY: raw.HTTPS_ONLY === 'true',

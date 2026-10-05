@@ -105,3 +105,29 @@ export interface Attachment {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message?: string;
+}
+
+export interface ApiError {
+  message: string;
+  status: number;
+}
+
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterData extends LoginCredentials {
+  name: string;
+}
+
+// The refresh token is set as an HttpOnly cookie, not returned in the body.
+export interface AuthResponse {
+  accessToken: string;
+  user: AuthUser;
+}

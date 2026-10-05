@@ -1,5 +1,5 @@
 import axiosInstance from './api';
-import { AuthUser, LoginCredentials, AuthResponse, ApiResponse } from '../types';
+import { AuthUser, LoginCredentials, RegisterData, AuthResponse, ApiResponse } from '../types';
 
 const AUTH_BASE_URL = '/auth';
 
@@ -8,6 +8,14 @@ export const authService = {
     const response = await axiosInstance.post<ApiResponse<AuthResponse>>(
       `${AUTH_BASE_URL}/login`,
       credentials
+    );
+    return response.data;
+  },
+
+  async register(data: RegisterData) {
+    const response = await axiosInstance.post<ApiResponse<AuthResponse>>(
+      `${AUTH_BASE_URL}/register`,
+      data
     );
     return response.data;
   },

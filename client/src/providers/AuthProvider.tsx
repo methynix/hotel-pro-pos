@@ -2,7 +2,7 @@ import { FC, ReactNode, useEffect, useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AuthContext, AuthContextType } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
-import { AuthUser } from '../types';
+import { AuthUser, AuthResponse, ApiResponse, LoginCredentials, RegisterData } from '../types';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -63,25 +63,38 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
     }
   }, [isError, error, queryClient]);
 
-  const loginMutation = useMutation({
-    mutationFn: async (credentials: { email: string; password: string }) => {
-      const response = await authService.login(credentials);
-      return response;
-    },
-    onSuccess: (data) => {
-      if (data.data?.token) {
-        authService.setToken(data.data.token);
-        if (data.data.refreshToken) {
-          authService.setRefreshToken(data.data.refreshToken);
-        }
-        setToken(data.data.token);
-        queryClient.setQueryData(['currentUser'], data.data.user);
-      }
+  // Login and register both respond with an access token + user, so they
+  // share the same success/failure handling.
+  const authMutationOptions = {
+    onSuccess: (data: ApiResponse<AuthResponse>) => {
+      const { accessToken } = data.data;
+      authService.setToken(accessToken);
+      setToken(accessToken);
+      queryClient.setQueryData(['currentUser'], data.data.user);
     },
     onError: () => {
       authService.clearTokens();
       setToken(null);
     },
+  };
+
+  const requireAccessToken = (response: ApiResponse<AuthResponse>) => {
+    if (!response.data?.accessToken) {
+      throw new Error('Server response did not include an access token');
+    }
+    return response;
+  };
+
+  const loginMutation = useMutation({
+    mutationFn: async (credentials: LoginCredentials) =>
+      requireAccessToken(await authService.login(credentials)),
+    ...authMutationOptions,
+  });
+
+  const registerMutation = useMutation({
+    mutationFn: async (data: RegisterData) =>
+      requireAccessToken(await authService.register(data)),
+    ...authMutationOptions,
   });
 
   const logoutMutation = useMutation({
@@ -98,9 +111,15 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
     user: currentUser ?? null,
     isLoading,
     isAuthenticated: !!token && !!currentUser,
-    login: (email: string, password: string) =>
-      loginMutation.mutateAsync({ email, password }),
-    logout: () => logoutMutation.mutateAsync(),
+    login: async (email: string, password: string) => {
+      await loginMutation.mutateAsync({ email, password });
+    },
+    register: async (name: string, email: string, password: string) => {
+      await registerMutation.mutateAsync({ name, email, password });
+    },
+    logout: async () => {
+      await logoutMutation.mutateAsync();
+    },
     setUser: (user: AuthUser | null) => {
       queryClient.setQueryData(['currentUser'], user);
     },
