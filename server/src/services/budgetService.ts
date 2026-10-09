@@ -33,15 +33,19 @@ export const budgetService = {
     const budget = await this.getBudgetById(budgetId, userId);
     if (!budget) return null;
 
+    // Transactions store the category by name; categoryId is populated here.
+    const categoryName = (budget.categoryId as any)?.name;
+    if (!categoryName) return null;
+
     const transactions = await Transaction.find({
       userId,
-      category: budget.categoryId.toString(),
+      category: categoryName,
       type: 'outflow',
       createdAt: { $gte: budget.startDate, $lte: budget.endDate },
     });
 
     const currentSpending = transactions.reduce((sum, tx) => sum + tx.amount, 0);
-    const percentageUsed = (currentSpending / budget.amount) * 100;
+    const percentageUsed = budget.amount > 0 ? (currentSpending / budget.amount) * 100 : 0;
     const isAlertTriggered = percentageUsed >= budget.alertThreshold;
 
     // Update budget with current spending

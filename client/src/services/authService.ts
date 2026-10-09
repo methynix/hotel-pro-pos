@@ -1,6 +1,13 @@
 import axiosInstance from './api';
 import { tokenStorage } from '../utils/tokenStorage';
-import { AuthUser, LoginCredentials, RegisterData, AuthResponse, ApiResponse } from '../types';
+import {
+  AuthUser,
+  LoginCredentials,
+  RegisterData,
+  AuthResponse,
+  ApiResponse,
+  UserPreferences,
+} from '../types';
 
 const AUTH_BASE_URL = '/auth';
 
@@ -26,6 +33,15 @@ export const authService = {
       `${AUTH_BASE_URL}/me`
     );
     return response.data;
+  },
+
+  async updateProfile(data: { name?: string; email?: string; preferences?: Partial<UserPreferences> }) {
+    const response = await axiosInstance.patch<ApiResponse<AuthUser>>(`${AUTH_BASE_URL}/me`, data);
+    return response.data.data;
+  },
+
+  async changePassword(currentPassword: string, newPassword: string) {
+    await axiosInstance.post(`${AUTH_BASE_URL}/change-password`, { currentPassword, newPassword });
   },
 
   async logout() {

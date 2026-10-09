@@ -1,5 +1,6 @@
 import express, { Router } from 'express';
-import { authenticate } from '../../middleware/auth';
+import { authenticate, authorize } from '../../middleware/auth';
+import { CAN_DELETE } from '../../config/permissions';
 import { reportController } from '../../controllers/reportController';
 import { asyncHandler } from '../../middleware/errorHandler';
 
@@ -15,6 +16,6 @@ router.post('/comprehensive', asyncHandler(reportController.generateComprehensiv
 
 router.get('/', asyncHandler(reportController.getAll));
 router.get('/:id', asyncHandler(reportController.getById));
-router.delete('/:id', asyncHandler(reportController.delete));
+router.delete('/:id', authorize(...CAN_DELETE), asyncHandler(reportController.delete));
 
 export default router;

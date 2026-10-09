@@ -1,44 +1,12 @@
-import axiosInstance from './api';
-import { Transaction, TransactionFilters, ApiResponse, PaginatedResponse } from '../types';
+import { Transaction, TransactionFilters } from '../types';
+import { getPage, createOne, updateOne, deleteOne } from './crud';
 
-const TRANSACTION_BASE_URL = '/transactions';
+const BASE = '/transactions';
 
 export const transactionService = {
-  async getAllTransactions(filters: TransactionFilters = {}) {
-    const response = await axiosInstance.get<PaginatedResponse<Transaction>>(
-      TRANSACTION_BASE_URL,
-      { params: filters }
-    );
-    return response.data;
-  },
-
-  async getTransactionById(id: string) {
-    const response = await axiosInstance.get<ApiResponse<Transaction>>(
-      `${TRANSACTION_BASE_URL}/${id}`
-    );
-    return response.data;
-  },
-
-  async createTransaction(transactionData: Partial<Transaction>) {
-    const response = await axiosInstance.post<ApiResponse<Transaction>>(
-      TRANSACTION_BASE_URL,
-      transactionData
-    );
-    return response.data;
-  },
-
-  async updateTransaction(id: string, transactionData: Partial<Transaction>) {
-    const response = await axiosInstance.patch<ApiResponse<Transaction>>(
-      `${TRANSACTION_BASE_URL}/${id}`,
-      transactionData
-    );
-    return response.data;
-  },
-
-  async deleteTransaction(id: string) {
-    const response = await axiosInstance.delete<ApiResponse<void>>(
-      `${TRANSACTION_BASE_URL}/${id}`
-    );
-    return response.data;
-  },
+  getAllTransactions: (filters: TransactionFilters = {}) => getPage<Transaction>(BASE, filters),
+  createTransaction: (data: Partial<Transaction>) => createOne<Transaction>(BASE, data),
+  updateTransaction: (id: string, data: Partial<Transaction>) =>
+    updateOne<Transaction>(`${BASE}/${id}`, data),
+  deleteTransaction: (id: string) => deleteOne(`${BASE}/${id}`),
 };

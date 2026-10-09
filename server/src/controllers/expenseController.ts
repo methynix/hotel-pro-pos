@@ -3,6 +3,7 @@ import { Expense } from '../models/Expense';
 import { sendSuccess, sendPaginated } from '../utils/response';
 import { AuthorizationError } from '../utils/errors';
 import { securityLogger } from '../services/securityLogger';
+import { CAN_APPROVE, hasRole } from '../config/permissions';
 
 export const expenseController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
@@ -24,8 +25,12 @@ export const expenseController = {
 
   async create(req: Request, res: Response, next: NextFunction) {
     try {
+      const body = { ...req.body };
+      // Only approvers may file an expense as already approved/rejected.
+      if (!hasRole(req.user?.role, CAN_APPROVE)) body.status = 'pending';
+
       const expense = await Expense.create({
-        ...req.body,
+        ...body,
         userId: req.user?.userId,
       });
       sendSuccess(res, 201, expense);
@@ -43,7 +48,11 @@ export const expenseController = {
         throw new AuthorizationError('Not authorized to update this expense');
       }
 
-      const updated = await Expense.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      const body = { ...req.body };
+      delete body.userId;
+      if (!hasRole(req.user?.role, CAN_APPROVE)) delete body.status;
+
+      const updated = await Expense.findByIdAndUpdate(req.params.id, body, { new: true, runValidators: true });
       sendSuccess(res, 200, updated);
     } catch (error) {
       next(error);

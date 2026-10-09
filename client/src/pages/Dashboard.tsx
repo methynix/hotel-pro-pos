@@ -1,6 +1,23 @@
 import { FC, useEffect, useState } from 'react';
-import { MdTrendingUp, MdTrendingDown, MdAccountBalance, MdPending } from 'react-icons/md';
+import { Link } from 'react-router-dom';
+import {
+  MdTrendingUp,
+  MdTrendingDown,
+  MdAccountBalance,
+  MdPending,
+  MdArrowUpward,
+  MdArrowDownward,
+  MdAdd,
+  MdReceipt,
+  MdBarChart,
+  MdAccountBalanceWallet,
+} from 'react-icons/md';
 import { analyticsService, DashboardMetrics, CategorySpending, DailyTrend } from '../services/analyticsService';
+import { useFormatters } from '../hooks/useFormatters';
+import { usePermissions } from '../hooks/usePermissions';
+import { errorMessage } from '../utils/format';
+import ErrorBanner from '../components/ui/ErrorBanner';
+import { Skeleton, SkeletonHeader, SkeletonStatCards } from '../components/ui/Skeleton';
 
 interface MetricCard {
   title: string;
@@ -11,8 +28,51 @@ interface MetricCard {
   colorClass: string;
 }
 
+const DashboardSkeleton: FC = () => (
+  <div className="space-y-8" role="status" aria-label="Loading dashboard">
+    <SkeletonHeader />
+    <SkeletonStatCards />
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2 bg-surface rounded-xl border border-border shadow-sm p-6 space-y-6">
+        <Skeleton className="h-5 w-48" />
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="space-y-2">
+            <div className="flex justify-between">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-4 w-20" />
+            </div>
+            <Skeleton className="h-2 w-full" />
+          </div>
+        ))}
+      </div>
+      <div className="bg-surface rounded-xl border border-border shadow-sm p-6 space-y-3">
+        <Skeleton className="h-5 w-32 mb-3" />
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-11 w-full" />
+        ))}
+        <Skeleton className="h-16 w-full mt-6" />
+        <Skeleton className="h-16 w-full" />
+      </div>
+    </div>
+    <div className="bg-surface rounded-xl border border-border shadow-sm p-8">
+      <Skeleton className="h-5 w-48 mb-6" />
+      <div className="flex items-end gap-3 h-48">
+        {Array.from({ length: 20 }).map((_, i) => (
+          <div key={i} className="flex-1" style={{ height: `${30 + ((i * 37) % 70)}%` }}>
+            <Skeleton className="h-full w-full" />
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
 const Dashboard: FC = () => {
+  const fmt = useFormatters();
+  const perms = usePermissions();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [topCategories, setTopCategories] = useState<CategorySpending[]>([]);
   const [cashFlow, setCashFlow] = useState<DailyTrend[]>([]);
@@ -22,32 +82,33 @@ const Dashboard: FC = () => {
     const loadDashboardData = async () => {
       try {
         setLoading(true);
+        setError(null);
         const data = await analyticsService.getFullDashboardData(timeframe);
         setMetrics(data.metrics);
-        setTopCategories(data.topCategories);
-        setCashFlow(data.cashFlowTrend);
-      } catch (error) {
-        console.error('Failed to load dashboard data:', error);
+        setTopCategories(data.topCategories || []);
+        setCashFlow(data.cashFlowTrend || []);
+      } catch (err) {
+        setError(errorMessage(err, 'Failed to load dashboard data'));
       } finally {
         setLoading(false);
       }
     };
 
     loadDashboardData();
-  }, [timeframe]);
+  }, [timeframe, reloadKey]);
 
-  if (loading || !metrics) {
+  if (loading) return <DashboardSkeleton />;
+
+  if (!metrics) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-text-secondary">Loading dashboard...</p>
-      </div>
+      <ErrorBanner message={error || 'Dashboard data is unavailable'} onRetry={() => setReloadKey((k) => k + 1)} />
     );
   }
 
   const metricCards: MetricCard[] = [
     {
       title: 'Total Inflows',
-      value: `$${metrics.totalInflows.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      value: fmt.money(metrics.totalInflows),
       change: `${metrics.inflowsChange >= 0 ? '+' : ''}${metrics.inflowsChange.toFixed(1)}%`,
       isPositive: metrics.inflowsChange >= 0,
       icon: MdTrendingUp,
@@ -55,7 +116,7 @@ const Dashboard: FC = () => {
     },
     {
       title: 'Total Expenses',
-      value: `$${metrics.totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      value: fmt.money(metrics.totalExpenses),
       change: `${metrics.expensesChange >= 0 ? '+' : ''}${metrics.expensesChange.toFixed(1)}%`,
       isPositive: metrics.expensesChange <= 0,
       icon: MdTrendingDown,
@@ -63,7 +124,7 @@ const Dashboard: FC = () => {
     },
     {
       title: 'Net Cash Flow',
-      value: `$${metrics.netCashFlow.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      value: fmt.money(metrics.netCashFlow),
       change: metrics.netCashFlow >= 0 ? 'Positive' : 'Negative',
       isPositive: metrics.netCashFlow >= 0,
       icon: MdAccountBalance,
@@ -79,16 +140,18 @@ const Dashboard: FC = () => {
     },
   ];
 
+  const maxAmount = Math.max(...cashFlow.flatMap((d) => [d.inflow, d.outflow]), 0) || 1;
+
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-bold text-text-primary mb-2">Dashboard</h1>
-          <p className="text-text-secondary">Welcome to ledgerHQ - Your Financial Intelligence Hub</p>
+          <h1 className="text-3xl md:text-4xl font-bold text-text-primary mb-2">Dashboard</h1>
+          <p className="text-text-secondary">Welcome to ledgerHQ, your financial intelligence hub</p>
         </div>
         <div className="flex gap-2">
-          {(['month', 'quarter', 'year'] as const).map(tf => (
+          {(['month', 'quarter', 'year'] as const).map((tf) => (
             <button
               key={tf}
               onClick={() => setTimeframe(tf)}
@@ -104,13 +167,15 @@ const Dashboard: FC = () => {
         </div>
       </div>
 
+      {error && <ErrorBanner message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
+
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {metricCards.map((metric, index) => {
+        {metricCards.map((metric) => {
           const Icon = metric.icon;
           return (
             <div
-              key={index}
+              key={metric.title}
               className="bg-surface rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow p-6"
             >
               <div className="flex items-center justify-between mb-4">
@@ -121,11 +186,16 @@ const Dashboard: FC = () => {
               </div>
 
               <div className="mb-3">
-                <p className="text-3xl font-bold text-text-primary">{metric.value}</p>
+                <p className="text-2xl md:text-3xl font-bold text-text-primary truncate">{metric.value}</p>
               </div>
 
-              <p className={`text-sm font-medium ${metric.isPositive ? 'text-success-600' : 'text-danger-600'}`}>
-                {metric.isPositive ? '↑' : '↓'} {metric.change}
+              <p
+                className={`inline-flex items-center gap-1 text-sm font-medium ${
+                  metric.isPositive ? 'text-success-600' : 'text-danger-600'
+                }`}
+              >
+                {metric.isPositive ? <MdArrowUpward className="w-4 h-4" /> : <MdArrowDownward className="w-4 h-4" />}
+                {metric.change}
               </p>
             </div>
           );
@@ -140,13 +210,11 @@ const Dashboard: FC = () => {
 
           {topCategories.length > 0 ? (
             <div className="space-y-4">
-              {topCategories.map((cat, i) => (
-                <div key={i} className="space-y-2">
+              {topCategories.map((cat) => (
+                <div key={cat.category} className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-text-primary">{cat.category}</span>
-                    <span className="text-sm font-bold text-text-primary">
-                      ${cat.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                    </span>
+                    <span className="text-sm font-bold text-text-primary">{fmt.money(cat.amount)}</span>
                   </div>
                   <div className="w-full bg-background rounded-full h-2">
                     <div
@@ -168,30 +236,38 @@ const Dashboard: FC = () => {
           <h2 className="text-lg font-semibold text-text-primary mb-6">Quick Actions</h2>
 
           <div className="space-y-3">
-            <a
-              href="/app/transactions"
-              className="block w-full p-3 bg-accent-600 hover:bg-accent-700 text-white rounded-lg font-medium text-center transition-colors shadow-sm hover:shadow-md"
+            {perms.canCreate && (
+              <>
+                <Link
+                  to="/app/transactions"
+                  className="flex items-center justify-center gap-2 w-full p-3 bg-accent-600 hover:bg-accent-700 text-white rounded-lg font-medium transition-colors shadow-sm hover:shadow-md"
+                >
+                  <MdAdd className="w-5 h-5" />
+                  New Transaction
+                </Link>
+                <Link
+                  to="/app/expenses"
+                  className="flex items-center justify-center gap-2 w-full p-3 bg-warning-500 hover:bg-warning-600 text-white rounded-lg font-medium transition-colors shadow-sm hover:shadow-md"
+                >
+                  <MdReceipt className="w-5 h-5" />
+                  Log Expense
+                </Link>
+              </>
+            )}
+            <Link
+              to="/app/reports"
+              className="flex items-center justify-center gap-2 w-full p-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors shadow-sm hover:shadow-md"
             >
-              New Transaction
-            </a>
-            <a
-              href="/app/expenses"
-              className="block w-full p-3 bg-warning-500 hover:bg-warning-600 text-white rounded-lg font-medium text-center transition-colors shadow-sm hover:shadow-md"
-            >
-              Log Expense
-            </a>
-            <a
-              href="/app/reports"
-              className="block w-full p-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-center transition-colors shadow-sm hover:shadow-md"
-            >
+              <MdBarChart className="w-5 h-5" />
               Generate Report
-            </a>
-            <a
-              href="/app/accounts"
-              className="block w-full p-3 border-2 border-accent-600 text-accent-600 hover:bg-accent-50 rounded-lg font-medium text-center transition-colors"
+            </Link>
+            <Link
+              to="/app/accounts"
+              className="flex items-center justify-center gap-2 w-full p-3 border-2 border-accent-600 text-accent-600 hover:bg-accent-50 rounded-lg font-medium transition-colors"
             >
+              <MdAccountBalanceWallet className="w-5 h-5" />
               View Accounts
-            </a>
+            </Link>
           </div>
 
           <div className="mt-8 pt-6 border-t border-border">
@@ -203,9 +279,7 @@ const Dashboard: FC = () => {
               </div>
               <div className="p-3 bg-accent-50 rounded-lg">
                 <p className="text-xs text-text-secondary mb-1">Account Balance</p>
-                <p className="text-2xl font-bold text-text-primary">
-                  ${metrics.accountBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </p>
+                <p className="text-2xl font-bold text-text-primary">{fmt.money(metrics.accountBalance)}</p>
               </div>
             </div>
           </div>
@@ -218,26 +292,25 @@ const Dashboard: FC = () => {
         {cashFlow.length > 0 ? (
           <div className="overflow-x-auto">
             <div className="flex gap-4 min-w-max" style={{ height: '200px', alignItems: 'flex-end' }}>
-              {cashFlow.map((day, i) => {
-                const maxAmount = Math.max(...cashFlow.flatMap(d => [d.inflow, d.outflow])) || 1;
+              {cashFlow.map((day) => {
                 const inflowHeight = (day.inflow / maxAmount) * 150;
                 const outflowHeight = (day.outflow / maxAmount) * 150;
 
                 return (
-                  <div key={i} className="flex flex-col items-center gap-2">
+                  <div key={day.date} className="flex flex-col items-center gap-2">
                     <div className="flex gap-1" style={{ alignItems: 'flex-end' }}>
                       {day.inflow > 0 && (
                         <div
                           className="w-2 bg-success-500 rounded"
                           style={{ height: `${inflowHeight}px` }}
-                          title={`Inflow: $${day.inflow.toFixed(2)}`}
+                          title={`Inflow: ${fmt.money(day.inflow)}`}
                         />
                       )}
                       {day.outflow > 0 && (
                         <div
                           className="w-2 bg-danger-500 rounded"
                           style={{ height: `${outflowHeight}px` }}
-                          title={`Outflow: $${day.outflow.toFixed(2)}`}
+                          title={`Outflow: ${fmt.money(day.outflow)}`}
                         />
                       )}
                     </div>

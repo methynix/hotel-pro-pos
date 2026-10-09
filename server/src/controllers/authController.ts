@@ -5,6 +5,18 @@ import { securityLogger } from '../services/securityLogger';
 import { AuthenticationError, ValidationError, ConflictError } from '../utils/errors';
 import { sendSuccess, sendError } from '../utils/response';
 import env from '../config/env';
+import { IUser } from '../models/User';
+import { updateProfileSchema, changePasswordSchema } from '../validators/auth';
+
+const toPublicUser = (user: IUser) => ({
+  id: user._id,
+  email: user.email,
+  name: user.name,
+  role: user.role,
+  isActive: user.isActive,
+  preferences: user.preferences,
+  createdAt: user.createdAt,
+});
 
 export const authController = {
   async login(req: Request, res: Response, next: NextFunction) {
@@ -31,6 +43,11 @@ export const authController = {
         return authService.getGenericAuthError();
       }
 
+      if (!user.isActive) {
+        securityLogger.logFailedLogin(email, ipAddress, req.get('user-agent'));
+        throw new AuthenticationError('This account has been deactivated. Contact an administrator.');
+      }
+
       // Generate tokens
       const { accessToken, refreshToken } = authService.generateTokens({
         userId: user._id.toString(),
@@ -48,12 +65,7 @@ export const authController = {
 
       sendSuccess(res, 200, {
         accessToken,
-        user: {
-          id: user._id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        },
+        user: toPublicUser(user),
       });
     } catch (error) {
       next(error);
@@ -104,12 +116,7 @@ export const authController = {
 
       sendSuccess(res, 201, {
         accessToken,
-        user: {
-          id: user._id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        },
+        user: toPublicUser(user),
       });
     } catch (error) {
       next(error);
@@ -123,12 +130,66 @@ export const authController = {
         throw new AuthenticationError('User not found');
       }
 
-      sendSuccess(res, 200, {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      });
+      sendSuccess(res, 200, toPublicUser(user));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateProfile(req: Request, res: Response, next: NextFunction) {
+    try {
+      const parsed = updateProfileSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new ValidationError(parsed.error.issues[0]?.message || 'Invalid input');
+      }
+      const { name, email, preferences } = parsed.data;
+
+      const user = await User.findById(req.user?.userId);
+      if (!user) {
+        throw new AuthenticationError('User not found');
+      }
+
+      if (email && email.toLowerCase() !== user.email) {
+        if (await User.exists({ email: email.toLowerCase() })) {
+          throw new ConflictError('Email already registered');
+        }
+        user.email = email.toLowerCase();
+      }
+      if (name) user.name = name;
+      if (preferences) {
+        user.set('preferences', { ...user.toObject().preferences, ...preferences });
+      }
+
+      await user.save();
+      sendSuccess(res, 200, toPublicUser(user));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async changePassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const parsed = changePasswordSchema.safeParse(req.body);
+      if (!parsed.success) {
+        throw new ValidationError(parsed.error.issues[0]?.message || 'Invalid input');
+      }
+      const { currentPassword, newPassword } = parsed.data;
+
+      const user = await User.findById(req.user?.userId).select('+password');
+      if (!user) {
+        throw new AuthenticationError('User not found');
+      }
+
+      if (!(await user.comparePassword(currentPassword))) {
+        throw new ValidationError('Current password is incorrect');
+      }
+      if (currentPassword === newPassword) {
+        throw new ValidationError('New password must be different from the current one');
+      }
+
+      user.password = newPassword;
+      await user.save();
+      sendSuccess(res, 200, { message: 'Password updated' });
     } catch (error) {
       next(error);
     }

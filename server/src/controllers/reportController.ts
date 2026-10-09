@@ -1,15 +1,27 @@
 import { Request, Response, NextFunction } from 'express';
 import { reportService } from '../services/reportService';
 import { sendSuccess } from '../utils/response';
-import { AuthorizationError } from '../utils/errors';
+import { AuthorizationError, ValidationError } from '../utils/errors';
 import { securityLogger } from '../services/securityLogger';
+
+const parsePeriod = (body: any) => {
+  const startDate = new Date(body?.startDate);
+  const endDate = new Date(body?.endDate);
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    throw new ValidationError('A valid start and end date are required');
+  }
+  if (startDate > endDate) {
+    throw new ValidationError('Start date must be before end date');
+  }
+  return { startDate, endDate };
+};
 
 export const reportController = {
   async generateIncomeStatement(req: Request, res: Response, next: NextFunction) {
     try {
-      const { startDate, endDate } = req.body;
-      const data = await reportService.generateIncomeStatement(req.user?.userId, new Date(startDate), new Date(endDate));
-      await reportService.saveReport(req.user?.userId, 'income', data);
+      const { startDate, endDate } = parsePeriod(req.body);
+      const data = await reportService.generateIncomeStatement(req.user?.userId, startDate, endDate);
+      await reportService.saveReport(req.user?.userId, 'income', data, { startDate, endDate });
       sendSuccess(res, 200, data);
     } catch (error) {
       next(error);
@@ -18,9 +30,9 @@ export const reportController = {
 
   async generateCashFlowStatement(req: Request, res: Response, next: NextFunction) {
     try {
-      const { startDate, endDate } = req.body;
-      const data = await reportService.generateCashFlowStatement(req.user?.userId, new Date(startDate), new Date(endDate));
-      await reportService.saveReport(req.user?.userId, 'cash_flow', data);
+      const { startDate, endDate } = parsePeriod(req.body);
+      const data = await reportService.generateCashFlowStatement(req.user?.userId, startDate, endDate);
+      await reportService.saveReport(req.user?.userId, 'cash_flow', data, { startDate, endDate });
       sendSuccess(res, 200, data);
     } catch (error) {
       next(error);
@@ -39,9 +51,9 @@ export const reportController = {
 
   async generateTaxSummary(req: Request, res: Response, next: NextFunction) {
     try {
-      const { startDate, endDate } = req.body;
-      const data = await reportService.generateTaxSummary(req.user?.userId, new Date(startDate), new Date(endDate));
-      await reportService.saveReport(req.user?.userId, 'tax', data);
+      const { startDate, endDate } = parsePeriod(req.body);
+      const data = await reportService.generateTaxSummary(req.user?.userId, startDate, endDate);
+      await reportService.saveReport(req.user?.userId, 'tax', data, { startDate, endDate });
       sendSuccess(res, 200, data);
     } catch (error) {
       next(error);
@@ -50,9 +62,9 @@ export const reportController = {
 
   async generateComprehensiveReport(req: Request, res: Response, next: NextFunction) {
     try {
-      const { startDate, endDate } = req.body;
-      const data = await reportService.generateComprehensiveReport(req.user?.userId, new Date(startDate), new Date(endDate));
-      await reportService.saveReport(req.user?.userId, 'summary', data);
+      const { startDate, endDate } = parsePeriod(req.body);
+      const data = await reportService.generateComprehensiveReport(req.user?.userId, startDate, endDate);
+      await reportService.saveReport(req.user?.userId, 'summary', data, { startDate, endDate });
       sendSuccess(res, 200, data);
     } catch (error) {
       next(error);

@@ -3,11 +3,26 @@ import { Transaction } from '../models/Transaction';
 import { Expense } from '../models/Expense';
 import { Account } from '../models/Account';
 
+const REPORT_TITLES: Record<string, string> = {
+  income: 'Income Statement',
+  cash_flow: 'Cash Flow Statement',
+  balance: 'Balance Sheet',
+  tax: 'Tax Summary',
+  summary: 'Comprehensive Report',
+};
+
+// Make the end date inclusive of the whole day the user picked.
+const endOfDay = (date: Date) => {
+  const d = new Date(date);
+  d.setUTCHours(23, 59, 59, 999);
+  return d;
+};
+
 export const reportService = {
   async generateIncomeStatement(userId: string, startDate: Date, endDate: Date): Promise<any> {
     const transactions = await Transaction.find({
       userId,
-      createdAt: { $gte: startDate, $lte: endDate },
+      createdAt: { $gte: startDate, $lte: endOfDay(endDate) },
     });
 
     const inflows = transactions.filter(t => t.type === 'inflow').reduce((sum, t) => sum + t.amount, 0);
@@ -18,7 +33,8 @@ export const reportService = {
       revenues: inflows,
       expenses: outflows,
       netIncome,
-      margin: inflows > 0 ? ((netIncome / inflows) * 100).toFixed(2) : 0,
+      margin: inflows > 0 ? Number(((netIncome / inflows) * 100).toFixed(2)) : 0,
+      transactionCount: transactions.length,
     };
 
     return data;
@@ -27,7 +43,7 @@ export const reportService = {
   async generateCashFlowStatement(userId: string, startDate: Date, endDate: Date): Promise<any> {
     const transactions = await Transaction.find({
       userId,
-      createdAt: { $gte: startDate, $lte: endDate },
+      createdAt: { $gte: startDate, $lte: endOfDay(endDate) },
     });
 
     const operatingCashFlow = transactions
@@ -66,7 +82,7 @@ export const reportService = {
   async generateTaxSummary(userId: string, startDate: Date, endDate: Date): Promise<any> {
     const transactions = await Transaction.find({
       userId,
-      createdAt: { $gte: startDate, $lte: endDate },
+      createdAt: { $gte: startDate, $lte: endOfDay(endDate) },
     });
 
     const expensesByCategory: Record<string, number> = {};
@@ -110,13 +126,18 @@ export const reportService = {
     };
   },
 
-  async saveReport(userId: string, reportType: string, data: any): Promise<any> {
+  async saveReport(
+    userId: string,
+    reportType: string,
+    data: any,
+    period?: { startDate: Date; endDate: Date }
+  ): Promise<any> {
     return Report.create({
       userId,
       type: reportType,
-      title: `${reportType} Report - ${new Date().toLocaleDateString()}`,
-      startDate: data.reportPeriod?.startDate || new Date(),
-      endDate: data.reportPeriod?.endDate || new Date(),
+      title: REPORT_TITLES[reportType] || 'Report',
+      startDate: period?.startDate || new Date(),
+      endDate: period?.endDate || new Date(),
       data,
     });
   },

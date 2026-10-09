@@ -9,6 +9,8 @@ import AccountsManagement from '../pages/AccountsManagement';
 import ReportsManagement from '../pages/ReportsManagement';
 import UsersManagement from '../pages/UsersManagement';
 import CategoriesManagement from '../pages/CategoriesManagement';
+import BudgetManagement from '../pages/BudgetManagement';
+import RecurringTransactionManagement from '../pages/RecurringTransactionManagement';
 import Settings from '../pages/Settings';
 import PrivacyPolicy from '../pages/PrivacyPolicy';
 import Terms from '../pages/Terms';
@@ -29,7 +31,7 @@ export const routes: RouteObject[] = [
       {
         path: 'app',
         element: (
-          <ProtectedRoute allowedRoles={['admin', 'manager', 'viewer']}>
+          <ProtectedRoute allowedRoles={['admin', 'manager', 'viewer', 'operator']}>
             <MainLayout />
           </ProtectedRoute>
         ),
@@ -57,6 +59,14 @@ export const routes: RouteObject[] = [
           {
             path: 'categories',
             element: <CategoriesManagement />,
+          },
+          {
+            path: 'budgets',
+            element: <BudgetManagement />,
+          },
+          {
+            path: 'recurring',
+            element: <RecurringTransactionManagement />,
           },
           {
             path: 'users',

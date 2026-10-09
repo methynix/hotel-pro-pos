@@ -1,12 +1,21 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import bcrypt from 'bcrypt';
 
+export interface IUserPreferences {
+  currency: string;
+  dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
+  emailNotifications: boolean;
+  budgetAlerts: boolean;
+  weeklySummary: boolean;
+}
+
 export interface IUser extends Document {
   email: string;
   password: string;
   name: string;
   role: 'admin' | 'manager' | 'viewer' | 'operator';
   isActive: boolean;
+  preferences: IUserPreferences;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(password: string): Promise<boolean>;
@@ -44,6 +53,17 @@ const userSchema = new Schema<IUser>(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    preferences: {
+      currency: { type: String, default: 'USD' },
+      dateFormat: {
+        type: String,
+        enum: ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'],
+        default: 'MM/DD/YYYY',
+      },
+      emailNotifications: { type: Boolean, default: true },
+      budgetAlerts: { type: Boolean, default: true },
+      weeklySummary: { type: Boolean, default: false },
     },
   },
   {

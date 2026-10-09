@@ -35,7 +35,8 @@ export const accountController = {
         throw new AuthorizationError('Not authorized to update this account');
       }
 
-      const updated = await Account.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      const { userId: _userId, ...changes } = req.body;
+      const updated = await Account.findByIdAndUpdate(req.params.id, changes, { new: true, runValidators: true });
       sendSuccess(res, 200, updated);
     } catch (error) {
       next(error);

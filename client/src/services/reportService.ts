@@ -27,12 +27,9 @@ export const reportService = {
     return response.data.data;
   },
 
-  async getAllReports(page = 1, limit = 20) {
+  async getAllReports(page = 1, limit = 50) {
     const response = await apiClient.get('/reports', { params: { page, limit } });
-    return {
-      reports: response.data.data as Report[],
-      pagination: response.data.meta,
-    };
+    return response.data.data as Report[];
   },
 
   async getReportById(id: string) {
@@ -43,19 +40,5 @@ export const reportService = {
   async deleteReport(id: string) {
     const response = await apiClient.delete(`/reports/${id}`);
     return response.data;
-  },
-
-  generatePDF(data: any, filename: string) {
-    const element = document.createElement('div');
-    element.innerHTML = `
-      <h1>${filename}</h1>
-      <pre>${JSON.stringify(data, null, 2)}</pre>
-    `;
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(element.innerHTML);
-      printWindow.document.close();
-      printWindow.print();
-    }
   },
 };

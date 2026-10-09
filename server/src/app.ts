@@ -45,7 +45,7 @@ app.use(compression());
 app.use(cors({
   origin: [env.CLIENT_URL, 'http://localhost:5173'],
   credentials: true,
-  allowedHeaders: ['Content-Type', 'x-csrf-token'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
   exposedHeaders: ['x-csrf-token'],
 }));
 

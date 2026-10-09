@@ -43,7 +43,8 @@ export const transactionController = {
         throw new AuthorizationError('Not authorized to update this transaction');
       }
 
-      const updated = await Transaction.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      const { userId: _userId, ...changes } = req.body;
+      const updated = await Transaction.findByIdAndUpdate(req.params.id, changes, { new: true, runValidators: true });
       sendSuccess(res, 200, updated);
     } catch (error) {
       next(error);

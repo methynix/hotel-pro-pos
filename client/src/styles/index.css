@@ -95,3 +95,24 @@ select:focus {
 .animate-slide-in {
   animation: slideIn 0.3s ease-out;
 }
+
+/* Printing: only the active report document is printed. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #printable-report,
+  #printable-report * {
+    visibility: visible;
+  }
+
+  #printable-report {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border: none;
+    box-shadow: none;
+  }
+}

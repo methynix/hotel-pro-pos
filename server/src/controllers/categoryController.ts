@@ -35,7 +35,8 @@ export const categoryController = {
         throw new AuthorizationError('Not authorized to update this category');
       }
 
-      const updated = await Category.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      const { userId: _userId, ...changes } = req.body;
+      const updated = await Category.findByIdAndUpdate(req.params.id, changes, { new: true, runValidators: true });
       sendSuccess(res, 200, updated);
     } catch (error) {
       next(error);

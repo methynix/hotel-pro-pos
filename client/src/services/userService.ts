@@ -1,44 +1,13 @@
-import axiosInstance from './api';
-import { User, ApiResponse, PaginatedResponse } from '../types';
+import { User, ListParams } from '../types';
+import { getPage, createOne, updateOne, deleteOne } from './crud';
 
-const USER_BASE_URL = '/users';
+const BASE = '/users';
+
+export type UserInput = Pick<User, 'name' | 'email' | 'role' | 'isActive'> & { password?: string };
 
 export const userService = {
-  async getAllUsers(params = {}) {
-    const response = await axiosInstance.get<PaginatedResponse<User>>(
-      USER_BASE_URL,
-      { params }
-    );
-    return response.data;
-  },
-
-  async getUserById(id: string) {
-    const response = await axiosInstance.get<ApiResponse<User>>(
-      `${USER_BASE_URL}/${id}`
-    );
-    return response.data;
-  },
-
-  async createUser(userData: Partial<User> & { password: string }) {
-    const response = await axiosInstance.post<ApiResponse<User>>(
-      USER_BASE_URL,
-      userData
-    );
-    return response.data;
-  },
-
-  async updateUser(id: string, userData: Partial<User>) {
-    const response = await axiosInstance.patch<ApiResponse<User>>(
-      `${USER_BASE_URL}/${id}`,
-      userData
-    );
-    return response.data;
-  },
-
-  async deleteUser(id: string) {
-    const response = await axiosInstance.delete<ApiResponse<void>>(
-      `${USER_BASE_URL}/${id}`
-    );
-    return response.data;
-  },
+  getAllUsers: (params: ListParams = {}) => getPage<User>(BASE, params),
+  createUser: (data: UserInput & { password: string }) => createOne<User>(BASE, data),
+  updateUser: (id: string, data: Partial<UserInput>) => updateOne<User>(`${BASE}/${id}`, data),
+  deleteUser: (id: string) => deleteOne(`${BASE}/${id}`),
 };

@@ -1,8 +1,31 @@
+export type UserRole = 'admin' | 'manager' | 'viewer' | 'operator';
+
+export interface UserPreferences {
+  currency: string;
+  dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD';
+  emailNotifications: boolean;
+  budgetAlerts: boolean;
+  weeklySummary: boolean;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'manager' | 'viewer' | 'operator';
+  role: UserRole;
+  isActive?: boolean;
+  preferences?: UserPreferences;
+  createdAt?: string;
+}
+
+export interface User {
+  _id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Transaction {
@@ -59,7 +82,7 @@ export interface Category {
 export interface Report {
   _id: string;
   title: string;
-  type: 'income' | 'expense' | 'cash_flow' | 'summary';
+  type: 'income' | 'expense' | 'cash_flow' | 'balance' | 'tax' | 'summary';
   startDate: string;
   endDate: string;
   data: Record<string, any>;
@@ -111,6 +134,32 @@ export interface ApiResponse<T> {
   data: T;
   message?: string;
 }
+
+export interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+}
+
+export interface PaginatedResponse<T> {
+  success: boolean;
+  data: T[];
+  meta?: { pagination?: Pagination };
+}
+
+export interface Paginated<T> {
+  items: T[];
+  pagination: Pagination;
+}
+
+export interface ListParams {
+  page?: number;
+  limit?: number;
+}
+
+export type TransactionFilters = ListParams;
+export type ExpenseFilters = ListParams;
 
 export interface ApiError {
   message: string;

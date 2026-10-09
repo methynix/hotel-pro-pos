@@ -1,289 +1,298 @@
-import { FC, useEffect, useState } from 'react';
-import { MdEdit, MdDelete, MdAdd, MdToggleOn, MdToggleOff } from 'react-icons/md';
+import { FC, FormEvent, useMemo, useState } from 'react';
+import {
+  MdAdd,
+  MdArrowDownward,
+  MdArrowUpward,
+  MdDelete,
+  MdEdit,
+  MdPause,
+  MdPlayArrow,
+  MdRepeat,
+} from 'react-icons/md';
 import { recurringTransactionService } from '../services/recurringTransactionService';
 import { categoryService } from '../services/categoryService';
-import { RecurringTransaction, Category } from '../types/index';
+import { Category, RecurringTransaction } from '../types';
+import { useAsyncData } from '../hooks/useAsyncData';
+import { usePermissions } from '../hooks/usePermissions';
+import { useToast } from '../hooks/useToast';
+import { useFormatters } from '../hooks/useFormatters';
+import { errorMessage } from '../utils/format';
 import { SafeText } from '../utils/SafeText';
+import PageHeader from '../components/ui/PageHeader';
+import Button from '../components/ui/Button';
+import IconButton from '../components/ui/IconButton';
+import Badge from '../components/ui/Badge';
+import Modal from '../components/ui/Modal';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
+import EmptyState from '../components/ui/EmptyState';
+import ErrorBanner from '../components/ui/ErrorBanner';
+import StatCard from '../components/ui/StatCard';
+import ReadOnlyNotice from '../components/ui/ReadOnlyNotice';
+import { Field, Input, Select } from '../components/ui/FormField';
+import { SkeletonHeader, SkeletonStatCards, SkeletonTable } from '../components/ui/Skeleton';
+
+type Frequency = RecurringTransaction['frequency'];
+type TxType = RecurringTransaction['type'];
+
+const FREQUENCIES: Frequency[] = ['daily', 'weekly', 'monthly', 'quarterly', 'yearly'];
+
+// Rough monthly equivalents, used for the projected monthly totals.
+const PER_MONTH: Record<Frequency, number> = { daily: 30, weekly: 4.33, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12 };
+
+const today = () => new Date().toISOString().split('T')[0];
+
+const EMPTY_FORM = {
+  description: '',
+  amount: '',
+  type: 'outflow' as TxType,
+  category: '',
+  frequency: 'monthly' as Frequency,
+  nextDate: today(),
+};
 
 const RecurringTransactionManagement: FC = () => {
-  const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const perms = usePermissions();
+  const toast = useToast();
+  const fmt = useFormatters();
 
-  const [formData, setFormData] = useState({
-    amount: '',
-    description: '',
-    category: '',
-    type: 'outflow' as 'inflow' | 'outflow',
-    frequency: 'monthly' as 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly',
-    nextDate: new Date().toISOString().split('T')[0],
-  });
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const [recurringData, categoriesData] = await Promise.all([
+  const { data, setData, loading, error, reload } = useAsyncData(
+    async () => {
+      const [items, categories] = await Promise.all([
         recurringTransactionService.getAllRecurring(),
-        categoryService.getAllCategories(),
+        categoryService.getAllCategories().catch(() => [] as Category[]),
       ]);
-      setRecurring(recurringData);
-      setCategories(categoriesData);
-    } catch (error) {
-      console.error('Failed to load data:', error);
-    } finally {
-      setLoading(false);
-    }
+      return { items, categories };
+    },
+    { items: [] as RecurringTransaction[], categories: [] as Category[] }
+  );
+  const { items, categories } = data;
+  const setItems = (update: (list: RecurringTransaction[]) => RecurringTransaction[]) =>
+    setData((d) => ({ ...d, items: update(d.items) }));
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<RecurringTransaction | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [toDelete, setToDelete] = useState<RecurringTransaction | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [toggling, setToggling] = useState<string | null>(null);
+
+  // Older records stored a category id instead of its name.
+  const categoryName = (value: string) => categories.find((c) => c._id === value)?.name || value;
+
+  const projections = useMemo(() => {
+    const active = items.filter((i) => i.isActive);
+    const monthly = (type: TxType) =>
+      active.filter((i) => i.type === type).reduce((s, i) => s + i.amount * PER_MONTH[i.frequency], 0);
+    return { inflow: monthly('inflow'), outflow: monthly('outflow'), active: active.length };
+  }, [items]);
+
+  const categoryOptions = (type: TxType) =>
+    categories.filter((c) => c.type === (type === 'inflow' ? 'income' : 'expense')).map((c) => c.name);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ ...EMPTY_FORM, nextDate: today(), category: categoryOptions('outflow')[0] || '' });
+    setFormError(null);
+    setFormOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      if (editingId) {
-        await recurringTransactionService.updateRecurring(editingId, formData as any);
-      } else {
-        await recurringTransactionService.createRecurring(formData as any);
-      }
-      resetForm();
-      loadData();
-    } catch (error) {
-      console.error('Failed to save:', error);
-      alert('Failed to save recurring transaction');
-    }
-  };
-
-  const handleToggle = async (id: string) => {
-    try {
-      await recurringTransactionService.toggleRecurring(id);
-      loadData();
-    } catch (error) {
-      console.error('Failed to toggle:', error);
-      alert('Failed to toggle recurring transaction');
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this recurring transaction?')) return;
-    try {
-      await recurringTransactionService.deleteRecurring(id);
-      loadData();
-    } catch (error) {
-      console.error('Failed to delete:', error);
-      alert('Failed to delete');
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      amount: '',
-      description: '',
-      category: '',
-      type: 'outflow',
-      frequency: 'monthly',
-      nextDate: new Date().toISOString().split('T')[0],
+  const openEdit = (item: RecurringTransaction) => {
+    setEditing(item);
+    setForm({
+      description: item.description,
+      amount: String(item.amount),
+      type: item.type,
+      category: categoryName(item.category),
+      frequency: item.frequency,
+      nextDate: item.nextDate?.split('T')[0] || today(),
     });
-    setEditingId(null);
-    setShowForm(false);
+    setFormError(null);
+    setFormOpen(true);
   };
 
-  const getCategoryName = (categoryId: string) => {
-    return categories.find(c => c._id === categoryId)?.name || 'Unknown';
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    const amount = Number(form.amount);
+    if (!amount || amount <= 0) return setFormError('Enter an amount greater than zero');
+    if (!form.category.trim()) return setFormError('Choose a category');
+
+    setSaving(true);
+    setFormError(null);
+    const payload = {
+      description: form.description.trim(),
+      amount,
+      type: form.type,
+      category: form.category.trim(),
+      frequency: form.frequency,
+      nextDate: form.nextDate,
+    };
+    try {
+      if (editing) {
+        const updated = await recurringTransactionService.updateRecurring(editing._id, payload);
+        setItems((list) => list.map((i) => (i._id === updated._id ? updated : i)));
+        toast.success('Recurring transaction updated');
+      } else {
+        const created = await recurringTransactionService.createRecurring(payload);
+        setItems((list) => [created, ...list]);
+        toast.success('Recurring transaction created');
+      }
+      setFormOpen(false);
+    } catch (err) {
+      setFormError(errorMessage(err, 'Failed to save recurring transaction'));
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const getFrequencyLabel = (freq: string) => freq.charAt(0).toUpperCase() + freq.slice(1);
+  const handleToggle = async (item: RecurringTransaction) => {
+    setToggling(item._id);
+    try {
+      const updated = await recurringTransactionService.toggleRecurring(item._id);
+      setItems((list) => list.map((i) => (i._id === updated._id ? updated : i)));
+      toast.success(updated.isActive ? 'Schedule resumed' : 'Schedule paused');
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to update schedule'));
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!toDelete) return;
+    setDeleting(true);
+    try {
+      await recurringTransactionService.deleteRecurring(toDelete._id);
+      setItems((list) => list.filter((i) => i._id !== toDelete._id));
+      toast.success('Recurring transaction deleted');
+      setToDelete(null);
+    } catch (err) {
+      toast.error(errorMessage(err, 'Failed to delete'));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <SkeletonHeader withAction={perms.canCreate} />
+        <SkeletonStatCards count={3} />
+        <SkeletonTable rows={6} columns={6} />
+      </div>
+    );
+  }
+
+  const formCategories = Array.from(new Set([...categoryOptions(form.type), form.category].filter(Boolean)));
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold text-text-primary mb-2">Recurring Transactions</h1>
-          <p className="text-text-secondary">Automate regular income and expenses</p>
-        </div>
-        <button
-          onClick={() => {
-            setShowForm(!showForm);
-            resetForm();
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-accent-600 hover:bg-accent-700 text-white rounded-lg font-medium transition-colors"
-        >
-          <MdAdd className="w-5 h-5" />
-          Add Recurring
-        </button>
+      <PageHeader
+        title="Recurring Transactions"
+        description="Schedule regular income and expenses such as rent, payroll or subscriptions"
+        actions={
+          perms.canCreate && (
+            <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+              New Schedule
+            </Button>
+          )
+        }
+      />
+
+      {perms.isReadOnly && <ReadOnlyNotice />}
+      {error && <ErrorBanner message={error} onRetry={reload} />}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+        <StatCard
+          label="Projected Monthly Inflow"
+          value={fmt.money(projections.inflow)}
+          tone="success"
+          icon={<MdArrowUpward className="w-5 h-5" />}
+        />
+        <StatCard
+          label="Projected Monthly Outflow"
+          value={fmt.money(projections.outflow)}
+          tone="danger"
+          icon={<MdArrowDownward className="w-5 h-5" />}
+        />
+        <StatCard
+          label="Active Schedules"
+          value={projections.active}
+          icon={<MdRepeat className="w-5 h-5" />}
+          hint={`${items.length - projections.active} paused`}
+        />
       </div>
 
-      {/* Form */}
-      {showForm && (
-        <div className="bg-surface rounded-xl border border-border shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-text-primary mb-6">
-            {editingId ? 'Edit Recurring Transaction' : 'Create New Recurring Transaction'}
-          </h2>
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input
-              type="number"
-              placeholder="Amount"
-              value={formData.amount}
-              onChange={e => setFormData({ ...formData, amount: e.target.value })}
-              className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-600"
-              required
-            />
-
-            <input
-              type="text"
-              placeholder="Description"
-              value={formData.description}
-              onChange={e => setFormData({ ...formData, description: e.target.value })}
-              className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-600"
-              required
-            />
-
-            <select
-              value={formData.category}
-              onChange={e => setFormData({ ...formData, category: e.target.value })}
-              className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-600"
-              required
-            >
-              <option value="">Select Category</option>
-              {categories.map(cat => (
-                <option key={cat._id} value={cat._id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={formData.type}
-              onChange={e => setFormData({ ...formData, type: e.target.value as any })}
-              className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-600"
-            >
-              <option value="inflow">Inflow</option>
-              <option value="outflow">Outflow</option>
-            </select>
-
-            <select
-              value={formData.frequency}
-              onChange={e => setFormData({ ...formData, frequency: e.target.value as any })}
-              className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-600"
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="quarterly">Quarterly</option>
-              <option value="yearly">Yearly</option>
-            </select>
-
-            <input
-              type="date"
-              value={formData.nextDate}
-              onChange={e => setFormData({ ...formData, nextDate: e.target.value })}
-              className="px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-600"
-              required
-            />
-
-            <div className="md:col-span-2 flex gap-3">
-              <button
-                type="submit"
-                className="flex-1 px-4 py-2 bg-success-600 hover:bg-success-700 text-white rounded-lg font-medium transition-colors"
-              >
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={resetForm}
-                className="flex-1 px-4 py-2 border border-border rounded-lg hover:bg-background transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* List */}
-      {loading ? (
-        <div className="text-center py-8 text-text-secondary">Loading...</div>
-      ) : recurring.length === 0 ? (
-        <div className="text-center py-8 text-text-secondary">No recurring transactions. Create one to get started!</div>
+      {items.length === 0 ? (
+        <EmptyState
+          icon={<MdRepeat className="w-7 h-7" />}
+          title="No recurring transactions"
+          description="Set up schedules for payments that happen on a regular basis."
+          action={
+            perms.canCreate && (
+              <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+                New Schedule
+              </Button>
+            )
+          }
+        />
       ) : (
         <div className="bg-surface rounded-xl border border-border shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-background border-b border-border">
                 <tr>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-text-primary">Description</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-text-primary">Category</th>
-                  <th className="px-6 py-3 text-right text-sm font-semibold text-text-primary">Amount</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-text-primary">Type</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-text-primary">Frequency</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-text-primary">Next Date</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-text-primary">Status</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-text-primary">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Description</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Frequency</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Next run</th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary">Amount</th>
+                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Status</th>
+                  <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {recurring.map(tx => (
-                  <tr key={tx._id} className="hover:bg-background transition-colors">
-                    <td className="px-6 py-4 text-sm text-text-primary">
-                      <SafeText>{tx.description}</SafeText>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-text-primary">{getCategoryName(tx.category)}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-text-primary text-right">
-                      ${tx.amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}
-                    </td>
+                {items.map((item) => (
+                  <tr key={item._id} className={`hover:bg-background/60 transition-colors ${item.isActive ? '' : 'opacity-60'}`}>
                     <td className="px-6 py-4 text-sm">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        tx.type === 'inflow' ? 'bg-success-100 text-success-700' : 'bg-danger-100 text-danger-700'
-                      }`}>
-                        {tx.type === 'inflow' ? '↑ Inflow' : '↓ Outflow'}
-                      </span>
+                      <SafeText className="font-medium text-text-primary">{item.description}</SafeText>
+                      <p className="text-xs text-text-secondary mt-0.5">{categoryName(item.category)}</p>
                     </td>
-                    <td className="px-6 py-4 text-sm text-text-primary">{getFrequencyLabel(tx.frequency)}</td>
-                    <td className="px-6 py-4 text-sm text-text-primary">
-                      {new Date(tx.nextDate).toLocaleDateString()}
+                    <td className="px-6 py-4 text-sm capitalize text-text-primary">{item.frequency}</td>
+                    <td className="px-6 py-4 text-sm text-text-secondary whitespace-nowrap">{fmt.date(item.nextDate)}</td>
+                    <td
+                      className={`px-6 py-4 text-sm font-semibold text-right whitespace-nowrap ${
+                        item.type === 'inflow' ? 'text-success-700' : 'text-text-primary'
+                      }`}
+                    >
+                      {item.type === 'inflow' ? '+' : '-'}
+                      {fmt.money(item.amount)}
                     </td>
-                    <td className="px-6 py-4 text-sm">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        tx.isActive ? 'bg-success-100 text-success-700' : 'bg-secondary-100 text-secondary-700'
-                      }`}>
-                        {tx.isActive ? 'Active' : 'Inactive'}
-                      </span>
+                    <td className="px-6 py-4">
+                      <Badge tone={item.isActive ? 'success' : 'neutral'}>{item.isActive ? 'Active' : 'Paused'}</Badge>
                     </td>
-                    <td className="px-6 py-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleToggle(tx._id)}
-                          className="p-1.5 hover:bg-background rounded transition-colors text-accent-600"
-                          title={tx.isActive ? 'Pause' : 'Resume'}
-                        >
-                          {tx.isActive ? <MdToggleOn className="w-5 h-5" /> : <MdToggleOff className="w-5 h-5" />}
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingId(tx._id);
-                            setFormData({
-                              amount: tx.amount.toString(),
-                              description: tx.description,
-                              category: tx.category,
-                              type: tx.type,
-                              frequency: tx.frequency,
-                              nextDate: new Date(tx.nextDate).toISOString().split('T')[0],
-                            });
-                            setShowForm(true);
-                          }}
-                          className="p-1.5 hover:bg-background rounded transition-colors text-accent-600"
-                        >
-                          <MdEdit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(tx._id)}
-                          className="p-1.5 hover:bg-background rounded transition-colors text-danger-600"
-                        >
-                          <MdDelete className="w-4 h-4" />
-                        </button>
+                    <td className="px-6 py-4">
+                      <div className="flex justify-end gap-1">
+                        {perms.canUpdate && (
+                          <>
+                            <IconButton
+                              label={item.isActive ? 'Pause schedule' : 'Resume schedule'}
+                              tone={item.isActive ? 'neutral' : 'success'}
+                              disabled={toggling === item._id}
+                              onClick={() => handleToggle(item)}
+                            >
+                              {item.isActive ? <MdPause className="w-4 h-4" /> : <MdPlayArrow className="w-4 h-4" />}
+                            </IconButton>
+                            <IconButton label="Edit schedule" tone="accent" onClick={() => openEdit(item)}>
+                              <MdEdit className="w-4 h-4" />
+                            </IconButton>
+                          </>
+                        )}
+                        {perms.canDelete && (
+                          <IconButton label="Delete schedule" tone="danger" onClick={() => setToDelete(item)}>
+                            <MdDelete className="w-4 h-4" />
+                          </IconButton>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -293,6 +302,137 @@ const RecurringTransactionManagement: FC = () => {
           </div>
         </div>
       )}
+
+      <Modal
+        open={formOpen}
+        onClose={() => setFormOpen(false)}
+        dismissible={!saving}
+        title={editing ? 'Edit Schedule' : 'New Schedule'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setFormOpen(false)} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="submit" form="recurring-form" loading={saving}>
+              {editing ? 'Save Changes' : 'Create Schedule'}
+            </Button>
+          </>
+        }
+      >
+        <form id="recurring-form" onSubmit={handleSubmit} className="space-y-4">
+          {formError && <ErrorBanner message={formError} />}
+          <div className="grid grid-cols-2 gap-2">
+            {(['inflow', 'outflow'] as const).map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() =>
+                  setForm({
+                    ...form,
+                    type,
+                    category: categoryOptions(type).includes(form.category) ? form.category : categoryOptions(type)[0] || '',
+                  })
+                }
+                className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                  form.type === type
+                    ? type === 'inflow'
+                      ? 'border-success-500 bg-success-50 text-success-700'
+                      : 'border-danger-500 bg-danger-50 text-danger-700'
+                    : 'border-border text-text-secondary hover:bg-background'
+                }`}
+              >
+                {type === 'inflow' ? <MdArrowUpward className="w-4 h-4" /> : <MdArrowDownward className="w-4 h-4" />}
+                {type === 'inflow' ? 'Money in' : 'Money out'}
+              </button>
+            ))}
+          </div>
+          <Field label="Description" htmlFor="rec-description" required>
+            <Input
+              id="rec-description"
+              placeholder="Office rent"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              required
+            />
+          </Field>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label={`Amount (${fmt.currency})`} htmlFor="rec-amount" required>
+              <Input
+                id="rec-amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                required
+              />
+            </Field>
+            <Field label="Category" htmlFor="rec-category" required>
+              {formCategories.length > 0 ? (
+                <Select
+                  id="rec-category"
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  required
+                >
+                  <option value="" disabled>
+                    Select a category
+                  </option>
+                  {formCategories.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </Select>
+              ) : (
+                <Input
+                  id="rec-category"
+                  value={form.category}
+                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  required
+                />
+              )}
+            </Field>
+            <Field label="Frequency" htmlFor="rec-frequency">
+              <Select
+                id="rec-frequency"
+                value={form.frequency}
+                onChange={(e) => setForm({ ...form, frequency: e.target.value as Frequency })}
+              >
+                {FREQUENCIES.map((f) => (
+                  <option key={f} value={f}>
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Next run" htmlFor="rec-next" required>
+              <Input
+                id="rec-next"
+                type="date"
+                value={form.nextDate}
+                onChange={(e) => setForm({ ...form, nextDate: e.target.value })}
+                required
+              />
+            </Field>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={!!toDelete}
+        title="Delete schedule"
+        message={
+          <>
+            Delete the recurring transaction <strong className="text-text-primary">{toDelete?.description}</strong>?
+            Transactions it already created are kept.
+          </>
+        }
+        confirmLabel="Delete Schedule"
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setToDelete(null)}
+      />
     </div>
   );
 };

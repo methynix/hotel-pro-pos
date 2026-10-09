@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export interface IReport extends Document {
   title: string;
-  type: 'income' | 'expense' | 'cash_flow' | 'summary';
+  type: 'income' | 'expense' | 'cash_flow' | 'balance' | 'tax' | 'summary';
   startDate: Date;
   endDate: Date;
   data: Record<string, any>;
@@ -13,7 +13,7 @@ export interface IReport extends Document {
 const reportSchema = new Schema<IReport>(
   {
     title: { type: String, required: true },
-    type: { type: String, enum: ['income', 'expense', 'cash_flow', 'summary'], required: true },
+    type: { type: String, enum: ['income', 'expense', 'cash_flow', 'balance', 'tax', 'summary'], required: true },
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
     data: { type: Schema.Types.Mixed, default: {} },

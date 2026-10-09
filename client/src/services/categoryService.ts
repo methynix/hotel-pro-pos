@@ -1,44 +1,11 @@
-import axiosInstance from './api';
-import { Category, ApiResponse, PaginatedResponse } from '../types';
+import { Category } from '../types';
+import { getList, createOne, updateOne, deleteOne } from './crud';
 
-const CATEGORY_BASE_URL = '/categories';
+const BASE = '/categories';
 
 export const categoryService = {
-  async getAllCategories(params = {}) {
-    const response = await axiosInstance.get<PaginatedResponse<Category>>(
-      CATEGORY_BASE_URL,
-      { params }
-    );
-    return response.data;
-  },
-
-  async getCategoryById(id: string) {
-    const response = await axiosInstance.get<ApiResponse<Category>>(
-      `${CATEGORY_BASE_URL}/${id}`
-    );
-    return response.data;
-  },
-
-  async createCategory(categoryData: Partial<Category>) {
-    const response = await axiosInstance.post<ApiResponse<Category>>(
-      CATEGORY_BASE_URL,
-      categoryData
-    );
-    return response.data;
-  },
-
-  async updateCategory(id: string, categoryData: Partial<Category>) {
-    const response = await axiosInstance.patch<ApiResponse<Category>>(
-      `${CATEGORY_BASE_URL}/${id}`,
-      categoryData
-    );
-    return response.data;
-  },
-
-  async deleteCategory(id: string) {
-    const response = await axiosInstance.delete<ApiResponse<void>>(
-      `${CATEGORY_BASE_URL}/${id}`
-    );
-    return response.data;
-  },
+  getAllCategories: () => getList<Category>(BASE),
+  createCategory: (data: Partial<Category>) => createOne<Category>(BASE, data),
+  updateCategory: (id: string, data: Partial<Category>) => updateOne<Category>(`${BASE}/${id}`, data),
+  deleteCategory: (id: string) => deleteOne(`${BASE}/${id}`),
 };

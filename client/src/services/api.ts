@@ -61,7 +61,7 @@ axiosInstance.interceptors.response.use(
     if (freshToken) csrfToken = freshToken;
     return response;
   },
-  (error: AxiosError<{ message?: string }>) => {
+  (error: AxiosError<{ message?: string; error?: { message?: string } }>) => {
     const freshToken = error.response?.headers['x-csrf-token'] as string | undefined;
     if (freshToken) csrfToken = freshToken;
 
@@ -72,7 +72,11 @@ axiosInstance.interceptors.response.use(
     }
 
     const apiError: ApiError = {
-      message: error.response?.data?.message || error.message || 'An error occurred',
+      message:
+        error.response?.data?.error?.message ||
+        error.response?.data?.message ||
+        error.message ||
+        'An error occurred',
       status: error.response?.status || 500,
     };
 

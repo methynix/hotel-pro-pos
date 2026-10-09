@@ -10,6 +10,8 @@ import {
   MdPeople,
   MdSettings,
   MdChevronLeft,
+  MdPieChart,
+  MdRepeat,
 } from 'react-icons/md';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -25,15 +27,21 @@ interface NavItem {
   roles: string[];
 }
 
+const ALL_ROLES = ['admin', 'manager', 'viewer', 'operator'];
+
+// Every role can open every finance page; what they can do there is
+// limited by utils/permissions. Only user management is admin-only.
 const navigationItems: NavItem[] = [
-  { label: 'Dashboard', path: '/app', icon: MdDashboard, roles: ['admin', 'manager', 'viewer', 'operator'] },
-  { label: 'Transactions', path: '/app/transactions', icon: MdTrendingUp, roles: ['admin', 'manager', 'viewer', 'operator'] },
-  { label: 'Expenses', path: '/app/expenses', icon: MdReceipt, roles: ['admin', 'manager', 'viewer', 'operator'] },
-  { label: 'Accounts', path: '/app/accounts', icon: MdAccountBalance, roles: ['admin', 'manager', 'viewer'] },
-  { label: 'Reports', path: '/app/reports', icon: MdBarChart, roles: ['admin', 'manager', 'viewer'] },
-  { label: 'Categories', path: '/app/categories', icon: MdCategory, roles: ['admin', 'manager'] },
+  { label: 'Dashboard', path: '/app', icon: MdDashboard, roles: ALL_ROLES },
+  { label: 'Transactions', path: '/app/transactions', icon: MdTrendingUp, roles: ALL_ROLES },
+  { label: 'Recurring', path: '/app/recurring', icon: MdRepeat, roles: ALL_ROLES },
+  { label: 'Expenses', path: '/app/expenses', icon: MdReceipt, roles: ALL_ROLES },
+  { label: 'Budgets', path: '/app/budgets', icon: MdPieChart, roles: ALL_ROLES },
+  { label: 'Accounts', path: '/app/accounts', icon: MdAccountBalance, roles: ALL_ROLES },
+  { label: 'Categories', path: '/app/categories', icon: MdCategory, roles: ALL_ROLES },
+  { label: 'Reports', path: '/app/reports', icon: MdBarChart, roles: ALL_ROLES },
   { label: 'Users', path: '/app/users', icon: MdPeople, roles: ['admin'] },
-  { label: 'Settings', path: '/app/settings', icon: MdSettings, roles: ['admin', 'manager', 'viewer', 'operator'] },
+  { label: 'Settings', path: '/app/settings', icon: MdSettings, roles: ALL_ROLES },
 ];
 
 const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle }) => {
@@ -56,7 +64,7 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle }) => {
       <aside
         className={`${
           isOpen ? 'translate-x-0' : '-translate-x-full'
-        } fixed md:relative md:translate-x-0 left-0 top-0 z-40 w-64 h-screen bg-primary-900 text-white transition-transform duration-300 ease-in-out shadow-xl overflow-y-auto flex flex-col`}
+        } fixed md:relative md:translate-x-0 print:hidden left-0 top-0 z-40 w-64 h-screen bg-primary-900 text-white transition-transform duration-300 ease-in-out shadow-xl overflow-y-auto flex flex-col`}
       >
         {/* Header */}
         <div className="p-6 border-b border-primary-800">
@@ -87,12 +95,15 @@ const Sidebar: FC<SidebarProps> = ({ isOpen, onToggle }) => {
         <nav className="flex-1 p-4 space-y-1">
           {filteredItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+            const isActive =
+              location.pathname === item.path ||
+              (item.path !== '/app' && location.pathname.startsWith(item.path + '/'));
 
             return (
               <Link
                 key={item.path}
                 to={item.path}
+                onClick={() => window.innerWidth < 768 && onToggle()}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
                   isActive
                     ? 'bg-accent-600 text-white shadow-md'

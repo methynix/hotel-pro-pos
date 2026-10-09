@@ -21,6 +21,19 @@ export const errorHandler = (
     return;
   }
 
+  // Mongo duplicate key (e.g. a reused account number or email)
+  if ((error as any)?.code === 11000) {
+    const field = Object.keys((error as any).keyValue || {})[0] || 'value';
+    sendError(res, 409, 'CONFLICT', `That ${field} is already in use`);
+    return;
+  }
+
+  if (error.name === 'ValidationError' || error.name === 'CastError') {
+    const first = Object.values((error as any).errors || {})[0] as { message?: string } | undefined;
+    sendError(res, 400, 'VALIDATION_ERROR', first?.message || 'Invalid input');
+    return;
+  }
+
   // Generic error response (never expose implementation details)
   sendError(res, 500, 'INTERNAL_ERROR', 'An unexpected error occurred');
 };
