@@ -2,18 +2,20 @@ import { Request, Response, NextFunction } from 'express';
 import { Receipt } from '../models/Receipt';
 import { receiptService } from '../services/receiptService';
 import { sendSuccess, sendPaginated } from '../utils/response';
-import { AuthorizationError } from '../utils/errors';
+import { AuthorizationError, ValidationError } from '../utils/errors';
 import { securityLogger } from '../services/securityLogger';
+import { orgScope } from '../middleware/auth';
+import { Organization } from '../models/Organization';
 
 export const receiptController = {
   async generate(req: Request, res: Response, next: NextFunction) {
     try {
       const { transactionId } = req.body;
       if (!transactionId) {
-        return sendSuccess(res, 400, { error: 'Transaction ID required' });
+        throw new ValidationError('Transaction ID required');
       }
 
-      const receipt = await receiptService.generateReceipt(transactionId, req.user?.userId);
+      const receipt = await receiptService.generateReceipt(transactionId, req.user!.organizationId!, req.user!.userId);
       sendSuccess(res, 201, receipt);
     } catch (error) {
       next(error);
@@ -23,7 +25,7 @@ export const receiptController = {
   async getByTransaction(req: Request, res: Response, next: NextFunction) {
     try {
       const { transactionId } = req.params;
-      const receipt = await Receipt.findOne({ transactionId, userId: req.user?.userId });
+      const receipt = await Receipt.findOne({ transactionId, ...orgScope(req) });
 
       if (!receipt) {
         securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `receipt:${transactionId}`, req.ip || 'unknown');
@@ -43,8 +45,8 @@ export const receiptController = {
       const skip = (page - 1) * limit;
 
       const [receipts, total] = await Promise.all([
-        Receipt.find({ userId: req.user?.userId }).skip(skip).limit(limit).sort({ createdAt: -1 }),
-        Receipt.countDocuments({ userId: req.user?.userId }),
+        Receipt.find(orgScope(req)).skip(skip).limit(limit).sort({ createdAt: -1 }),
+        Receipt.countDocuments(orgScope(req)),
       ]);
 
       sendPaginated(res, 200, receipts, { page, limit, total });
@@ -56,7 +58,7 @@ export const receiptController = {
   async printReceipt(req: Request, res: Response, next: NextFunction) {
     try {
       const receiptId = Array.isArray(req.params.receiptId) ? req.params.receiptId[0] : req.params.receiptId;
-      const receipt = await Receipt.findOne({ _id: receiptId, userId: req.user?.userId });
+      const receipt = await Receipt.findOne({ _id: receiptId, ...orgScope(req) });
 
       if (!receipt) {
         securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `receipt:print:${receiptId}`, req.ip || 'unknown');
@@ -64,7 +66,8 @@ export const receiptController = {
       }
 
       await receiptService.incrementPrintCount(receiptId);
-      const html = await receiptService.formatReceiptHTML(receipt);
+      const org = await Organization.findById(req.user!.organizationId).select('name');
+      const html = await receiptService.formatReceiptHTML(receipt, org?.name);
 
       res.type('html');
       res.send(html);
@@ -75,7 +78,7 @@ export const receiptController = {
 
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const receipt = await Receipt.findOne({ _id: req.params.id, userId: req.user?.userId });
+      const receipt = await Receipt.findOne({ _id: req.params.id, ...orgScope(req) });
 
       if (!receipt) {
         securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `receipt:${req.params.id}`, req.ip || 'unknown');

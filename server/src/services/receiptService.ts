@@ -1,5 +1,17 @@
 import { Receipt, IReceipt } from '../models/Receipt';
 import { Transaction } from '../models/Transaction';
+import { Account } from '../models/Account';
+import { NotFoundError } from '../utils/errors';
+import { fromMinor } from '../utils/money';
+
+// The receipt schema has a fixed set of methods; map the app's labels onto it.
+const PAYMENT_METHODS: Record<string, string> = {
+  Cash: 'cash',
+  Card: 'card',
+  Cheque: 'check',
+  'Bank Transfer': 'transfer',
+  'Mobile Money': 'transfer',
+};
 
 export const receiptService = {
   async generateReceiptNumber(): Promise<string> {
@@ -8,22 +20,24 @@ export const receiptService = {
     return `RCP-${timestamp}-${random}`;
   },
 
-  async generateReceipt(transactionId: string, userId: string): Promise<IReceipt> {
-    const transaction = await Transaction.findById(transactionId);
+  async generateReceipt(transactionId: string, organizationId: string, createdBy: string): Promise<IReceipt> {
+    const transaction = await Transaction.findOne({ _id: transactionId, organizationId });
     if (!transaction) {
-      throw new Error('Transaction not found');
+      throw new NotFoundError('Transaction');
     }
 
+    const account = await Account.findById(transaction.accountId ?? transaction.fromAccountId).select('currency');
     const receiptNumber = await this.generateReceiptNumber();
 
-    const receipt = await Receipt.create({
+    return Receipt.create({
       transactionId,
-      userId,
+      organizationId,
+      createdBy,
       receiptNumber,
       amount: transaction.amount,
-      currency: 'USD',
+      currency: account?.currency || 'TZS',
       description: transaction.description,
-      paymentMethod: transaction.paymentMethod || 'cash',
+      paymentMethod: PAYMENT_METHODS[transaction.paymentMethod ?? ''] ?? 'other',
       items: [
         {
           description: transaction.description,
@@ -33,16 +47,6 @@ export const receiptService = {
         },
       ],
     });
-
-    return receipt;
-  },
-
-  async getReceiptsByUser(userId: string, limit = 20, skip = 0): Promise<IReceipt[]> {
-    return Receipt.find({ userId }).limit(limit).skip(skip).sort({ createdAt: -1 });
-  },
-
-  async getReceiptByTransactionId(transactionId: string): Promise<IReceipt | null> {
-    return Receipt.findOne({ transactionId });
   },
 
   async incrementPrintCount(receiptId: string): Promise<IReceipt | null> {
@@ -53,9 +57,17 @@ export const receiptService = {
     );
   },
 
-  async formatReceiptHTML(receipt: IReceipt): Promise<string> {
+  async formatReceiptHTML(receipt: IReceipt, organizationName = 'ledgerHQ'): Promise<string> {
     const date = new Date(receipt.createdAt).toLocaleDateString();
     const time = new Date(receipt.createdAt).toLocaleTimeString();
+    const currency = receipt.currency || 'TZS';
+    const amount = new Intl.NumberFormat(currency === 'TZS' ? 'en-TZ' : 'en-US', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: currency === 'TZS' ? 0 : 2,
+    }).format(fromMinor(receipt.amount));
+    const escapeHtml = (value: string) =>
+      String(value ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
     return `
       <!DOCTYPE html>
@@ -89,7 +101,7 @@ export const receiptService = {
       <body>
         <div class="receipt">
           <div class="header">
-            <div class="title">ledgerHQ</div>
+            <div class="title">${escapeHtml(organizationName)}</div>
             <div class="subtitle">Financial Transaction Receipt</div>
           </div>
 
@@ -97,24 +109,24 @@ export const receiptService = {
           <div style="font-size: 12px; margin: 10px 0;">
             <div>Date: ${date}</div>
             <div>Time: ${time}</div>
-            <div>Payment: ${receipt.paymentMethod.toUpperCase()}</div>
+            <div>Payment: ${escapeHtml((receipt.paymentMethod || 'N/A').toUpperCase())}</div>
           </div>
 
           <div style="margin: 15px 0; border-top: 1px dashed #999; border-bottom: 1px dashed #999; padding: 10px 0;">
             <div class="line-item">
-              <span class="item-desc">${receipt.description}</span>
-              <span class="item-amount">$${receipt.amount.toFixed(2)}</span>
+              <span class="item-desc">${escapeHtml(receipt.description)}</span>
+              <span class="item-amount">${amount}</span>
             </div>
           </div>
 
           <div class="total-section">
             <div class="total-line">
               <span>Total Amount:</span>
-              <span>$${receipt.amount.toFixed(2)}</span>
+              <span>${amount}</span>
             </div>
             <div class="total-line" style="font-size: 14px; border-top: 1px solid #000; padding-top: 10px;">
               <span>Amount Due:</span>
-              <span>$${receipt.amount.toFixed(2)}</span>
+              <span>${amount}</span>
             </div>
           </div>
 

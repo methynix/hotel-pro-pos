@@ -2,6 +2,8 @@ import 'dotenv/config';
 import app from './app';
 import env from './config/env';
 import { connectDatabase, disconnectDatabase } from './config/database';
+import { startScheduler } from './services/scheduler';
+import { emailService } from './services/emailService';
 
 async function startServer(): Promise<void> {
   try {
@@ -16,11 +18,15 @@ async function startServer(): Promise<void> {
       console.log(`✅ Server running on http://localhost:${env.PORT}`);
       console.log(`📡 API: http://localhost:${env.PORT}/api/v1`);
       console.log(`🏥 Health: http://localhost:${env.PORT}/health`);
+      console.log(emailService.isEnabled() ? `✉️  Email notifications from ${env.EMAIL_FROM}` : '✉️  Email disabled (no RESEND_API_KEY)');
     });
+
+    const stopScheduler = startScheduler();
 
     // Graceful shutdown
     const shutdown = async (signal: string) => {
       console.log(`\n📛 Received ${signal}, shutting down gracefully...`);
+      stopScheduler();
       server.close(async () => {
         await disconnectDatabase();
         process.exit(0);

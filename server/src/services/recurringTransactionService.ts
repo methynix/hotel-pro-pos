@@ -1,34 +1,10 @@
-import { RecurringTransaction, IRecurringTransaction } from '../models/RecurringTransaction';
-import { Transaction } from '../models/Transaction';
+import { RecurringTransaction } from '../models/RecurringTransaction';
+import { ledgerService } from './ledgerService';
+import { budgetService } from './budgetService';
+
+const MAX_CATCH_UP = 31; // runs per entry per sweep, so a long outage can't flood the ledger
 
 export const recurringTransactionService = {
-  async createRecurring(data: Partial<IRecurringTransaction>): Promise<IRecurringTransaction> {
-    return RecurringTransaction.create(data);
-  },
-
-  async getRecurringByUser(userId: string): Promise<IRecurringTransaction[]> {
-    return RecurringTransaction.find({ userId, isActive: true }).sort({ nextDate: 1 });
-  },
-
-  async getRecurringById(id: string, userId: string): Promise<IRecurringTransaction | null> {
-    return RecurringTransaction.findOne({ _id: id, userId });
-  },
-
-  async updateRecurring(id: string, userId: string, data: Partial<IRecurringTransaction>): Promise<IRecurringTransaction | null> {
-    return RecurringTransaction.findOneAndUpdate({ _id: id, userId }, data, { new: true });
-  },
-
-  async toggleRecurring(id: string, userId: string): Promise<IRecurringTransaction | null> {
-    const recurring = await this.getRecurringById(id, userId);
-    if (!recurring) return null;
-    return RecurringTransaction.findByIdAndUpdate(id, { isActive: !recurring.isActive }, { new: true });
-  },
-
-  async deleteRecurring(id: string, userId: string): Promise<boolean> {
-    const result = await RecurringTransaction.deleteOne({ _id: id, userId });
-    return result.deletedCount > 0;
-  },
-
   calculateNextDate(frequency: string, currentDate: Date): Date {
     const next = new Date(currentDate);
 
@@ -53,39 +29,55 @@ export const recurringTransactionService = {
     return next;
   },
 
-  async executeRecurringTransactions(): Promise<number> {
-    const now = new Date();
-    const dueTransactions = await RecurringTransaction.find({
-      isActive: true,
-      nextDate: { $lte: now },
-    });
-
+  /**
+   * Posts every due occurrence to the ledger. Each occurrence and the
+   * advance of `nextDate` commit together, so a crash can't double-post.
+   * Returns how many transactions were created.
+   */
+  async executeDue(now = new Date()): Promise<number> {
+    const due = await RecurringTransaction.find({ isActive: true, nextDate: { $lte: now } });
     let count = 0;
+    const touchedOrgs = new Set<string>();
 
-    for (const recurring of dueTransactions) {
+    for (const recurring of due) {
       try {
-        await Transaction.create({
-          amount: recurring.amount,
-          description: recurring.description,
-          category: recurring.category,
-          type: recurring.type,
-          status: 'completed',
-          paymentMethod: 'auto',
-          userId: recurring.userId,
-        });
-
-        const nextDate = this.calculateNextDate(recurring.frequency, now);
-        await RecurringTransaction.findByIdAndUpdate(recurring._id, {
-          nextDate,
-          lastExecuted: now,
-        });
-
-        count++;
+        for (let i = 0; i < MAX_CATCH_UP && recurring.nextDate <= now; i++) {
+          const occurrence = recurring.nextDate;
+          await ledgerService.inTransaction(async (session) => {
+            await ledgerService.create(
+              recurring.organizationId.toString(),
+              recurring.createdBy.toString(),
+              {
+                type: recurring.type,
+                amount: recurring.amount,
+                description: recurring.description,
+                accountId: recurring.accountId.toString(),
+                categoryId: recurring.categoryId.toString(),
+                transactionDate: occurrence,
+                status: 'completed',
+                paymentMethod: 'Recurring',
+                recurringTransactionId: recurring._id.toString(),
+              },
+              session
+            );
+            recurring.lastExecuted = occurrence;
+            recurring.nextDate = this.calculateNextDate(recurring.frequency, occurrence);
+            recurring.lastError = undefined;
+            await recurring.save({ session });
+          });
+          count++;
+          touchedOrgs.add(recurring.organizationId.toString());
+        }
       } catch (error) {
-        console.error(`Failed to execute recurring transaction ${recurring._id}:`, error);
+        // e.g. the account was deactivated. Keep the entry, record why, and
+        // retry on the next sweep once someone fixes it.
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Recurring transaction ${recurring._id} failed:`, message);
+        await RecurringTransaction.updateOne({ _id: recurring._id }, { lastError: message });
       }
     }
 
+    for (const organizationId of touchedOrgs) await budgetService.checkAndNotify(organizationId);
     return count;
   },
 };

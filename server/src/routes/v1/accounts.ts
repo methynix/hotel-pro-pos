@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { accountController } from '../../controllers/accountController';
 import { asyncHandler } from '../../middleware/errorHandler';
-import { authenticate, authorize } from '../../middleware/auth';
+import { authenticate, authorize, requireOrganization } from '../../middleware/auth';
 import { CAN_CREATE, CAN_UPDATE, CAN_DELETE } from '../../config/permissions';
 
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, requireOrganization);
 
 router.get('/', asyncHandler(accountController.getAll.bind(accountController)));
 router.post('/', authorize(...CAN_CREATE), asyncHandler(accountController.create.bind(accountController)));

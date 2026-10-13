@@ -20,8 +20,8 @@ export const reportController = {
   async generateIncomeStatement(req: Request, res: Response, next: NextFunction) {
     try {
       const { startDate, endDate } = parsePeriod(req.body);
-      const data = await reportService.generateIncomeStatement(req.user?.userId, startDate, endDate);
-      await reportService.saveReport(req.user?.userId, 'income', data, { startDate, endDate });
+      const data = await reportService.generateIncomeStatement(req.user!.organizationId!, startDate, endDate);
+      await reportService.saveReport(req.user!.organizationId!, req.user!.userId, 'income', data, { startDate, endDate });
       sendSuccess(res, 200, data);
     } catch (error) {
       next(error);
@@ -31,8 +31,8 @@ export const reportController = {
   async generateCashFlowStatement(req: Request, res: Response, next: NextFunction) {
     try {
       const { startDate, endDate } = parsePeriod(req.body);
-      const data = await reportService.generateCashFlowStatement(req.user?.userId, startDate, endDate);
-      await reportService.saveReport(req.user?.userId, 'cash_flow', data, { startDate, endDate });
+      const data = await reportService.generateCashFlowStatement(req.user!.organizationId!, startDate, endDate);
+      await reportService.saveReport(req.user!.organizationId!, req.user!.userId, 'cash_flow', data, { startDate, endDate });
       sendSuccess(res, 200, data);
     } catch (error) {
       next(error);
@@ -41,8 +41,8 @@ export const reportController = {
 
   async generateBalanceSheet(req: Request, res: Response, next: NextFunction) {
     try {
-      const data = await reportService.generateBalanceSheet(req.user?.userId);
-      await reportService.saveReport(req.user?.userId, 'balance', data);
+      const data = await reportService.generateBalanceSheet(req.user!.organizationId!);
+      await reportService.saveReport(req.user!.organizationId!, req.user!.userId, 'balance', data);
       sendSuccess(res, 200, data);
     } catch (error) {
       next(error);
@@ -52,8 +52,8 @@ export const reportController = {
   async generateTaxSummary(req: Request, res: Response, next: NextFunction) {
     try {
       const { startDate, endDate } = parsePeriod(req.body);
-      const data = await reportService.generateTaxSummary(req.user?.userId, startDate, endDate);
-      await reportService.saveReport(req.user?.userId, 'tax', data, { startDate, endDate });
+      const data = await reportService.generateTaxSummary(req.user!.organizationId!, startDate, endDate);
+      await reportService.saveReport(req.user!.organizationId!, req.user!.userId, 'tax', data, { startDate, endDate });
       sendSuccess(res, 200, data);
     } catch (error) {
       next(error);
@@ -63,8 +63,8 @@ export const reportController = {
   async generateComprehensiveReport(req: Request, res: Response, next: NextFunction) {
     try {
       const { startDate, endDate } = parsePeriod(req.body);
-      const data = await reportService.generateComprehensiveReport(req.user?.userId, startDate, endDate);
-      await reportService.saveReport(req.user?.userId, 'summary', data, { startDate, endDate });
+      const data = await reportService.generateComprehensiveReport(req.user!.organizationId!, startDate, endDate);
+      await reportService.saveReport(req.user!.organizationId!, req.user!.userId, 'summary', data, { startDate, endDate });
       sendSuccess(res, 200, data);
     } catch (error) {
       next(error);
@@ -77,7 +77,7 @@ export const reportController = {
       const limit = parseInt(req.query.limit as string) || 20;
       const skip = (page - 1) * limit;
 
-      const reports = await reportService.getReportsByUser(req.user?.userId, limit, skip);
+      const reports = await reportService.getReportsByUser(req.user!.organizationId!, limit, skip);
       sendSuccess(res, 200, reports);
     } catch (error) {
       next(error);
@@ -87,7 +87,7 @@ export const reportController = {
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const reportId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-      const report = await reportService.getReportById(reportId, req.user?.userId);
+      const report = await reportService.getReportById(reportId, req.user!.organizationId!);
 
       if (!report) {
         securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `report:${reportId}`, req.ip || 'unknown');
@@ -103,7 +103,7 @@ export const reportController = {
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
       const reportId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-      const deleted = await reportService.deleteReport(reportId, req.user?.userId);
+      const deleted = await reportService.deleteReport(reportId, req.user!.organizationId!);
 
       if (!deleted) {
         securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `report:${reportId}`, req.ip || 'unknown');

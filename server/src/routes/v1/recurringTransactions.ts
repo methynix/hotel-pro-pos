@@ -1,12 +1,12 @@
 import express, { Router } from 'express';
-import { authenticate, authorize } from '../../middleware/auth';
+import { authenticate, authorize, requireOrganization } from '../../middleware/auth';
 import { CAN_CREATE, CAN_UPDATE, CAN_DELETE } from '../../config/permissions';
 import { recurringTransactionController } from '../../controllers/recurringTransactionController';
 import { asyncHandler } from '../../middleware/errorHandler';
 
 const router: Router = express.Router();
 
-router.use(authenticate);
+router.use(authenticate, requireOrganization);
 
 router.post('/', authorize(...CAN_CREATE), asyncHandler(recurringTransactionController.create));
 router.get('/', asyncHandler(recurringTransactionController.getAll));

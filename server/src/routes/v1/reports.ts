@@ -1,12 +1,12 @@
 import express, { Router } from 'express';
-import { authenticate, authorize } from '../../middleware/auth';
+import { authenticate, authorize, requireOrganization } from '../../middleware/auth';
 import { CAN_DELETE } from '../../config/permissions';
 import { reportController } from '../../controllers/reportController';
 import { asyncHandler } from '../../middleware/errorHandler';
 
 const router: Router = express.Router();
 
-router.use(authenticate);
+router.use(authenticate, requireOrganization);
 
 router.post('/income-statement', asyncHandler(reportController.generateIncomeStatement));
 router.post('/cash-flow', asyncHandler(reportController.generateCashFlowStatement));

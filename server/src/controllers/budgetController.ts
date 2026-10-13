@@ -1,41 +1,34 @@
 import { Request, Response, NextFunction } from 'express';
+import { Budget } from '../models/Budget';
+import { Category } from '../models/Category';
 import { budgetService } from '../services/budgetService';
 import { sendSuccess } from '../utils/response';
-import { AuthorizationError } from '../utils/errors';
-import { securityLogger } from '../services/securityLogger';
+import { NotFoundError, ValidationError } from '../utils/errors';
+import { orgScope } from '../middleware/auth';
+import { parse } from '../utils/validate';
+import { createBudgetSchema, updateBudgetSchema } from '../validators/budget';
+
+async function assertExpenseCategory(req: Request, categoryId: string) {
+  const category = await Category.findOne({ _id: categoryId, ...orgScope(req) });
+  if (!category) throw new ValidationError('Category was not found');
+  if (category.type !== 'expense') throw new ValidationError('Budgets can only track expense categories');
+}
 
 export const budgetController = {
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const now = new Date();
-      let startDate = new Date(now);
-      let endDate = new Date(now);
+      const input = parse(createBudgetSchema, req.body);
+      await assertExpenseCategory(req, input.categoryId);
 
-      const period = req.body.period || 'monthly';
-
-      switch (period) {
-        case 'monthly':
-          startDate.setDate(1);
-          endDate.setMonth(endDate.getMonth() + 1, 0);
-          break;
-        case 'quarterly':
-          startDate.setMonth(Math.floor(startDate.getMonth() / 3) * 3, 1);
-          endDate.setMonth(startDate.getMonth() + 3, 0);
-          break;
-        case 'yearly':
-          startDate.setMonth(0, 1);
-          endDate.setMonth(11, 31);
-          break;
-      }
-
-      const budget = await budgetService.createBudget({
-        ...req.body,
-        userId: req.user?.userId,
-        startDate,
-        endDate,
+      const budget = await Budget.create({
+        ...input,
+        ...orgScope(req),
+        createdBy: req.user!.userId,
+        ...budgetService.currentPeriod(input.period),
       });
 
       sendSuccess(res, 201, budget);
+      budgetService.checkAndNotify(req.user!.organizationId!);
     } catch (error) {
       next(error);
     }
@@ -43,8 +36,7 @@ export const budgetController = {
 
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      const budgets = await budgetService.getAllBudgetStatus(req.user?.userId);
-      sendSuccess(res, 200, budgets);
+      sendSuccess(res, 200, await budgetService.getAllWithStatus(req.user!.organizationId!));
     } catch (error) {
       next(error);
     }
@@ -52,16 +44,9 @@ export const budgetController = {
 
   async getById(req: Request, res: Response, next: NextFunction) {
     try {
-      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-      const budget = await budgetService.getBudgetById(id, req.user?.userId);
-
-      if (!budget) {
-        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `budget:${id}`, req.ip || 'unknown');
-        throw new AuthorizationError('Not authorized to view this budget');
-      }
-
-      const status = await budgetService.calculateBudgetStatus(id, req.user?.userId);
-      sendSuccess(res, 200, { ...budget.toObject(), ...status });
+      const budget = await budgetService.getById(req.params.id as string, req.user!.organizationId!);
+      if (!budget) throw new NotFoundError('Budget');
+      sendSuccess(res, 200, { ...budget.toJSON(), ...(await budgetService.status(budget)) });
     } catch (error) {
       next(error);
     }
@@ -69,15 +54,17 @@ export const budgetController = {
 
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-      const budget = await budgetService.updateBudget(id, req.user?.userId, req.body);
+      const changes = parse(updateBudgetSchema, req.body);
+      if (changes.categoryId) await assertExpenseCategory(req, changes.categoryId);
 
-      if (!budget) {
-        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `budget:${id}`, req.ip || 'unknown');
-        throw new AuthorizationError('Not authorized to update this budget');
-      }
+      const budget = await Budget.findOne({ _id: req.params.id, ...orgScope(req) });
+      if (!budget) throw new NotFoundError('Budget');
+      budget.set({ ...changes, ...(changes.period ? budgetService.currentPeriod(changes.period) : {}) });
+      await budget.save();
+      await budget.populate('categoryId');
 
       sendSuccess(res, 200, budget);
+      budgetService.checkAndNotify(req.user!.organizationId!);
     } catch (error) {
       next(error);
     }
@@ -85,14 +72,8 @@ export const budgetController = {
 
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-      const deleted = await budgetService.deleteBudget(id, req.user?.userId);
-
-      if (!deleted) {
-        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `budget:${id}`, req.ip || 'unknown');
-        throw new AuthorizationError('Not authorized to delete this budget');
-      }
-
+      const result = await Budget.deleteOne({ _id: req.params.id, ...orgScope(req) });
+      if (!result.deletedCount) throw new NotFoundError('Budget');
       sendSuccess(res, 200, { message: 'Budget deleted' });
     } catch (error) {
       next(error);
@@ -101,8 +82,7 @@ export const budgetController = {
 
   async getAlerts(req: Request, res: Response, next: NextFunction) {
     try {
-      const alerts = await budgetService.getAlertsForUser(req.user?.userId);
-      sendSuccess(res, 200, alerts);
+      sendSuccess(res, 200, await budgetService.getAlerts(req.user!.organizationId!));
     } catch (error) {
       next(error);
     }

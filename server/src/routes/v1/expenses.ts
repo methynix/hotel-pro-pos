@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { expenseController } from '../../controllers/expenseController';
 import { asyncHandler } from '../../middleware/errorHandler';
-import { authenticate, authorize } from '../../middleware/auth';
+import { authenticate, authorize, requireOrganization } from '../../middleware/auth';
 import { CAN_CREATE, CAN_UPDATE, CAN_DELETE } from '../../config/permissions';
 
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, requireOrganization);
 
 router.get('/', asyncHandler(expenseController.getAll.bind(expenseController)));
 router.post('/', authorize(...CAN_CREATE), asyncHandler(expenseController.create.bind(expenseController)));

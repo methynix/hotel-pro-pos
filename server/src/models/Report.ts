@@ -6,7 +6,8 @@ export interface IReport extends Document {
   startDate: Date;
   endDate: Date;
   data: Record<string, any>;
-  userId: mongoose.Types.ObjectId;
+  organizationId: mongoose.Types.ObjectId;
+  createdBy: mongoose.Types.ObjectId;
   createdAt: Date;
 }
 
@@ -17,7 +18,8 @@ const reportSchema = new Schema<IReport>(
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
     data: { type: Schema.Types.Mixed, default: {} },
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   },
   { timestamps: true }
 );

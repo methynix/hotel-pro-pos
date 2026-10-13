@@ -14,5 +14,6 @@ router.post('/logout', asyncHandler(authController.logout.bind(authController)))
 router.get('/me', authenticate, asyncHandler(authController.getCurrentUser.bind(authController)));
 router.patch('/me', authenticate, asyncHandler(authController.updateProfile.bind(authController)));
 router.post('/change-password', authenticate, asyncHandler(authController.changePassword.bind(authController)));
+router.post('/switch-organization', authenticate, asyncHandler(authController.switchOrganization.bind(authController)));
 
 export default router;

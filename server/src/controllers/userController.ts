@@ -1,99 +1,127 @@
 import { Request, Response, NextFunction } from 'express';
-import { z } from 'zod';
-import { User } from '../models/User';
+import { User, IUser } from '../models/User';
+import { Organization } from '../models/Organization';
 import { sendSuccess, sendPaginated } from '../utils/response';
-import { ConflictError, NotFoundError, ValidationError } from '../utils/errors';
-import { createUserSchema, updateUserSchema } from '../validators/user';
+import { NotFoundError, ValidationError } from '../utils/errors';
+import { parse } from '../utils/validate';
+import { updateMemberSchema } from '../validators/organization';
+import { notificationService } from '../services/notificationService';
 
-const parse = <T>(schema: z.ZodType<T>, body: unknown): T => {
-  const result = schema.safeParse(body);
-  if (!result.success) {
-    throw new ValidationError(result.error.issues[0]?.message || 'Invalid input');
-  }
-  return result.data;
+export const ROLE_LABELS: Record<string, string> = {
+  admin: 'Administrator (full access)',
+  manager: 'Manager (create, edit and approve)',
+  operator: 'Operator (create records)',
+  viewer: 'Viewer (read-only)',
 };
+
+// These endpoints manage *memberships* of the caller's organization. A user
+// account can belong to several organizations, so an admin here can change
+// someone's role or remove them, but never edit or delete the account itself.
+
+const membershipOf = (user: IUser, organizationId: string) =>
+  user.organizations.find((m) => m.organizationId.toString() === organizationId);
+
+const toMember = (user: IUser, organizationId: string) => {
+  const membership = membershipOf(user, organizationId)!;
+  return {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+    role: membership.role,
+    joinedAt: membership.joinedAt,
+    isActive: user.isActive,
+    createdAt: user.createdAt,
+  };
+};
+
+async function findMember(organizationId: string, userId: string): Promise<IUser> {
+  const user = await User.findOne({ _id: userId, 'organizations.organizationId': organizationId });
+  if (!user) throw new NotFoundError('Member');
+  return user;
+}
 
 export const userController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
+      const organizationId = req.user!.organizationId!;
       const page = parseInt(req.query.page as string) || 1;
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
-      const skip = (page - 1) * limit;
+      const filter = { 'organizations.organizationId': organizationId };
 
       const [users, total] = await Promise.all([
-        User.find().select('-password').sort({ createdAt: -1 }).skip(skip).limit(limit),
-        User.countDocuments(),
+        User.find(filter).sort({ name: 1 }).skip((page - 1) * limit).limit(limit),
+        User.countDocuments(filter),
       ]);
 
-      sendPaginated(res, 200, users, { page, limit, total });
+      sendPaginated(res, 200, users.map((u) => toMember(u, organizationId)), { page, limit, total });
     } catch (error) {
       next(error);
     }
   },
 
-  async create(req: Request, res: Response, next: NextFunction) {
-    try {
-      const input = parse(createUserSchema, req.body);
-      const email = input.email.toLowerCase();
-
-      if (await User.exists({ email })) {
-        throw new ConflictError('A user with this email already exists');
-      }
-
-      const user = await User.create({ ...input, email });
-      const { password: _password, ...safeUser } = user.toObject();
-      sendSuccess(res, 201, safeUser);
-    } catch (error) {
-      next(error);
-    }
-  },
-
+  /** Changes a member's role in this organization. */
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const input = parse(updateUserSchema, req.body);
-      const isSelf = req.params.id === req.user?.userId;
+      const organizationId = req.user!.organizationId!;
+      const { role } = parse(updateMemberSchema, req.body);
 
-      if (isSelf && input.role && input.role !== 'admin') {
-        throw new ValidationError('You cannot remove your own admin role');
+      // The acting admin can't demote themselves, which also guarantees the
+      // organization always keeps at least one admin.
+      if (req.params.id === req.user?.userId) {
+        throw new ValidationError('You cannot change your own role');
       }
-      if (isSelf && input.isActive === false) {
-        throw new ValidationError('You cannot deactivate your own account');
-      }
 
-      const user = await User.findById(req.params.id).select('+password');
-      if (!user) throw new NotFoundError('User');
-
-      if (input.email) {
-        const email = input.email.toLowerCase();
-        if (email !== user.email && (await User.exists({ email }))) {
-          throw new ConflictError('A user with this email already exists');
-        }
-        user.email = email;
-      }
-      if (input.name !== undefined) user.name = input.name;
-      if (input.role !== undefined) user.role = input.role;
-      if (input.isActive !== undefined) user.isActive = input.isActive;
-      if (input.password) user.password = input.password;
-
-      // save() rather than findByIdAndUpdate so the password hook runs.
+      const user = await findMember(organizationId, req.params.id as string);
+      const membership = membershipOf(user, organizationId)!;
+      const previous = membership.role;
+      membership.role = role;
       await user.save();
-      const { password: _password, ...safeUser } = user.toObject();
-      sendSuccess(res, 200, safeUser);
+      sendSuccess(res, 200, toMember(user, organizationId));
+
+      if (previous !== role) {
+        const org = await Organization.findById(organizationId).select('name');
+        notificationService.notify(user, {
+          category: 'account',
+          title: 'Your role has changed',
+          message: `Your role in ${org?.name ?? 'your organization'} is now ${role} (previously ${previous}).`,
+          link: '/app/settings',
+          email: {
+            paragraphs: [`An administrator changed your access level in ${org?.name ?? 'ledgerHQ'}.`],
+            rows: [
+              { label: 'Previous role', value: ROLE_LABELS[previous] || previous },
+              { label: 'New role', value: ROLE_LABELS[role] || role },
+            ],
+            actionLabel: 'See what you can do',
+          },
+        });
+      }
     } catch (error) {
       next(error);
     }
   },
 
+  /** Removes a member from this organization. Their account and other memberships remain. */
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
+      const organizationId = req.user!.organizationId!;
       if (req.params.id === req.user?.userId) {
-        throw new ValidationError('You cannot delete your own account');
+        throw new ValidationError('You cannot remove yourself from the organization');
       }
 
-      const deleted = await User.findByIdAndDelete(req.params.id);
-      if (!deleted) throw new NotFoundError('User');
+      const user = await findMember(organizationId, req.params.id as string);
+      user.organizations = user.organizations.filter((m) => m.organizationId.toString() !== organizationId);
+      if (user.activeOrganizationId?.toString() === organizationId) {
+        user.activeOrganizationId = user.organizations[0]?.organizationId ?? null;
+      }
+      await user.save();
+      sendSuccess(res, 200, { message: 'Member removed' });
 
-      sendSuccess(res, 200, { message: 'Deleted' });
+      const org = await Organization.findById(organizationId).select('name');
+      notificationService.notify(user, {
+        category: 'security',
+        title: `You were removed from ${org?.name ?? 'an organization'}`,
+        message: `An administrator removed you from ${org?.name ?? 'an organization'} in ledgerHQ, so you can no longer see its data.`,
+      });
     } catch (error) {
       next(error);
     }

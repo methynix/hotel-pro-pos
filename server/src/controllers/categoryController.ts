@@ -1,13 +1,28 @@
 import { Request, Response, NextFunction } from 'express';
 import { Category } from '../models/Category';
+import { Transaction } from '../models/Transaction';
+import { Expense } from '../models/Expense';
+import { Budget } from '../models/Budget';
+import { RecurringTransaction } from '../models/RecurringTransaction';
 import { sendSuccess } from '../utils/response';
-import { AuthorizationError } from '../utils/errors';
-import { securityLogger } from '../services/securityLogger';
+import { ConflictError, NotFoundError } from '../utils/errors';
+import { orgScope } from '../middleware/auth';
+import { parse } from '../utils/validate';
+import { createCategorySchema, updateCategorySchema } from '../validators/category';
+
+/** True when any record points at the category. */
+const isInUse = async (categoryId: unknown) =>
+  !!(
+    (await Transaction.exists({ categoryId })) ||
+    (await Expense.exists({ categoryId })) ||
+    (await Budget.exists({ categoryId })) ||
+    (await RecurringTransaction.exists({ categoryId }))
+  );
 
 export const categoryController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
-      const categories = await Category.find({ userId: req.user?.userId });
+      const categories = await Category.find(orgScope(req)).sort({ type: 1, name: 1 });
       sendSuccess(res, 200, categories);
     } catch (error) {
       next(error);
@@ -16,10 +31,8 @@ export const categoryController = {
 
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const category = await Category.create({
-        ...req.body,
-        userId: req.user?.userId,
-      });
+      const input = parse(createCategorySchema, req.body);
+      const category = await Category.create({ ...input, ...orgScope(req), createdBy: req.user!.userId });
       sendSuccess(res, 201, category);
     } catch (error) {
       next(error);
@@ -28,16 +41,17 @@ export const categoryController = {
 
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const category = await Category.findOne({ _id: req.params.id, userId: req.user?.userId });
+      const changes = parse(updateCategorySchema, req.body);
+      const category = await Category.findOne({ _id: req.params.id, ...orgScope(req) });
+      if (!category) throw new NotFoundError('Category');
 
-      if (!category) {
-        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `category:${req.params.id}`, req.ip || 'unknown');
-        throw new AuthorizationError('Not authorized to update this category');
+      if (changes.type && changes.type !== category.type && (await isInUse(category._id))) {
+        throw new ConflictError(`${category.name} is already used, so it can't switch between income and expense`);
       }
 
-      const { userId: _userId, ...changes } = req.body;
-      const updated = await Category.findByIdAndUpdate(req.params.id, changes, { new: true, runValidators: true });
-      sendSuccess(res, 200, updated);
+      category.set(changes);
+      await category.save();
+      sendSuccess(res, 200, category);
     } catch (error) {
       next(error);
     }
@@ -45,14 +59,16 @@ export const categoryController = {
 
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const category = await Category.findOne({ _id: req.params.id, userId: req.user?.userId });
+      const category = await Category.findOne({ _id: req.params.id, ...orgScope(req) });
+      if (!category) throw new NotFoundError('Category');
 
-      if (!category) {
-        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `category:${req.params.id}`, req.ip || 'unknown');
-        throw new AuthorizationError('Not authorized to delete this category');
+      if (await isInUse(category._id)) {
+        throw new ConflictError(
+          `${category.name} is used by transactions, expenses, budgets or recurring entries, so it can't be deleted`
+        );
       }
 
-      await Category.findByIdAndDelete(req.params.id);
+      await Category.deleteOne({ _id: category._id });
       sendSuccess(res, 200, { message: 'Category deleted' });
     } catch (error) {
       next(error);

@@ -1,7 +1,12 @@
+import mongoose from 'mongoose';
 import { Transaction } from '../models/Transaction';
-import { Expense } from '../models/Expense';
 import { Account } from '../models/Account';
 import { Category } from '../models/Category';
+import { fromMinor } from '../utils/money';
+
+// Figures cover completed income and expense transactions only: pending
+// ones haven't happened yet, and transfers just move money between the
+// organization's own accounts. All results are in major units.
 
 interface DashboardMetrics {
   totalInflows: number;
@@ -26,8 +31,34 @@ interface DailyTrend {
   outflow: number;
 }
 
+const oid = (id: string) => new mongoose.Types.ObjectId(id);
+
+/** Income and expense totals (minor units) between two dates. */
+async function totals(organizationId: string, from: Date, to?: Date) {
+  const rows = await Transaction.aggregate<{ _id: string; total: number; count: number }>([
+    {
+      $match: {
+        organizationId: oid(organizationId),
+        status: 'completed',
+        type: { $in: ['income', 'expense'] },
+        transactionDate: to ? { $gte: from, $lt: to } : { $gte: from },
+      },
+    },
+    { $group: { _id: '$type', total: { $sum: '$amount' }, count: { $sum: 1 } } },
+  ]);
+  const get = (type: string) => rows.find((r) => r._id === type);
+  return {
+    income: get('income')?.total ?? 0,
+    expense: get('expense')?.total ?? 0,
+    count: (get('income')?.count ?? 0) + (get('expense')?.count ?? 0),
+  };
+}
+
+const percentChange = (current: number, previous: number) =>
+  previous > 0 ? ((current - previous) / previous) * 100 : 0;
+
 export const analyticsService = {
-  async getDashboardMetrics(userId: string, timeframe: 'month' | 'quarter' | 'year' = 'month'): Promise<DashboardMetrics> {
+  async getDashboardMetrics(organizationId: string, timeframe: 'month' | 'quarter' | 'year' = 'month'): Promise<DashboardMetrics> {
     const now = new Date();
     let startDate: Date;
 
@@ -46,139 +77,97 @@ export const analyticsService = {
     const previousStartDate = new Date(startDate);
     previousStartDate.setMonth(startDate.getMonth() - 1);
 
-    // Current period transactions
-    const currentTransactions = await Transaction.find({
-      userId,
-      createdAt: { $gte: startDate },
-    });
+    const [current, previous, accounts, pendingCount] = await Promise.all([
+      totals(organizationId, startDate),
+      totals(organizationId, previousStartDate, startDate),
+      Account.find({ organizationId, status: 'active' }),
+      Transaction.countDocuments({ organizationId, status: 'pending' }),
+    ]);
 
-    const currentInflows = currentTransactions
-      .filter(t => t.type === 'inflow')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const currentOutflows = currentTransactions
-      .filter(t => t.type === 'outflow')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    // Previous period transactions for comparison
-    const previousTransactions = await Transaction.find({
-      userId,
-      createdAt: { $gte: previousStartDate, $lt: startDate },
-    });
-
-    const previousInflows = previousTransactions
-      .filter(t => t.type === 'inflow')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const previousOutflows = previousTransactions
-      .filter(t => t.type === 'outflow')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const inflowsChange = previousInflows > 0 ? ((currentInflows - previousInflows) / previousInflows) * 100 : 0;
-    const expensesChange = previousOutflows > 0 ? ((currentOutflows - previousOutflows) / previousOutflows) * 100 : 0;
-
-    // Account balance
-    const accounts = await Account.find({ userId });
-    const accountBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
-
-    const pendingTransactions = await Transaction.countDocuments({
-      userId,
-      status: 'pending',
-    });
+    // Money held in checking and savings, less what is owed on credit.
+    const accountBalance = accounts.reduce(
+      (sum, a) => sum + (a.type === 'credit' ? -a.currentBalance : a.currentBalance),
+      0
+    );
 
     return {
-      totalInflows: currentInflows,
-      totalExpenses: currentOutflows,
-      netCashFlow: currentInflows - currentOutflows,
-      accountBalance,
-      transactionCount: currentTransactions.length,
-      pendingCount: pendingTransactions,
-      inflowsChange,
-      expensesChange,
+      totalInflows: fromMinor(current.income),
+      totalExpenses: fromMinor(current.expense),
+      netCashFlow: fromMinor(current.income - current.expense),
+      accountBalance: fromMinor(accountBalance),
+      transactionCount: current.count,
+      pendingCount,
+      inflowsChange: percentChange(current.income, previous.income),
+      expensesChange: percentChange(current.expense, previous.expense),
     };
   },
 
-  async getTopCategories(userId: string, limit = 5): Promise<CategorySpending[]> {
-    const categories = await Category.find({ userId });
-    const transactions = await Transaction.find({ userId });
+  async getTopCategories(organizationId: string, limit = 5): Promise<CategorySpending[]> {
+    const rows = await Transaction.aggregate<{ _id: mongoose.Types.ObjectId; total: number }>([
+      { $match: { organizationId: oid(organizationId), type: 'expense', status: 'completed' } },
+      { $group: { _id: '$categoryId', total: { $sum: '$amount' } } },
+      { $sort: { total: -1 } },
+    ]);
+    const categories = await Category.find({ _id: { $in: rows.map((r) => r._id) } }).select('name');
+    const names = new Map(categories.map((c) => [c._id.toString(), c.name]));
+    const totalSpending = rows.reduce((sum, r) => sum + r.total, 0);
 
-    const spending: Record<string, number> = {};
-
-    transactions.forEach(tx => {
-      if (tx.type === 'outflow' && tx.category) {
-        spending[tx.category] = (spending[tx.category] || 0) + tx.amount;
-      }
-    });
-
-    const totalSpending = Object.values(spending).reduce((a, b) => a + b, 0);
-
-    return Object.entries(spending)
-      .map(([categoryId, amount]) => {
-        const category = categories.find(c => c._id.toString() === categoryId);
-        return {
-          category: category?.name || 'Unknown',
-          amount,
-          percentage: totalSpending > 0 ? (amount / totalSpending) * 100 : 0,
-        };
-      })
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, limit);
+    return rows.slice(0, limit).map((r) => ({
+      category: names.get(r._id?.toString()) ?? 'Uncategorized',
+      amount: fromMinor(r.total),
+      percentage: totalSpending > 0 ? (r.total / totalSpending) * 100 : 0,
+    }));
   },
 
-  async getCashFlowTrend(userId: string, days = 30): Promise<DailyTrend[]> {
+  async getCashFlowTrend(organizationId: string, days = 30): Promise<DailyTrend[]> {
     const now = new Date();
     const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
-    const transactions = await Transaction.find({
-      userId,
-      createdAt: { $gte: startDate },
-    });
+    const rows = await Transaction.aggregate<{ _id: { day: string; type: string }; total: number }>([
+      {
+        $match: {
+          organizationId: oid(organizationId),
+          status: 'completed',
+          type: { $in: ['income', 'expense'] },
+          transactionDate: { $gte: startDate },
+        },
+      },
+      {
+        $group: {
+          _id: { day: { $dateToString: { format: '%Y-%m-%d', date: '$transactionDate' } }, type: '$type' },
+          total: { $sum: '$amount' },
+        },
+      },
+    ]);
 
     const trend: Record<string, DailyTrend> = {};
-
-    // Initialize all days
     for (let i = 0; i < days; i++) {
-      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = new Date(now.getTime() - i * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       trend[dateStr] = { date: dateStr, inflow: 0, outflow: 0 };
     }
+    for (const row of rows) {
+      const day = trend[row._id.day];
+      if (!day) continue;
+      if (row._id.type === 'income') day.inflow += fromMinor(row.total);
+      else day.outflow += fromMinor(row.total);
+    }
 
-    // Aggregate transactions by day
-    transactions.forEach(tx => {
-      const dateStr = tx.createdAt.toISOString().split('T')[0];
-      if (trend[dateStr]) {
-        if (tx.type === 'inflow') {
-          trend[dateStr].inflow += tx.amount;
-        } else {
-          trend[dateStr].outflow += tx.amount;
-        }
-      }
-    });
-
-    return Object.values(trend).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return Object.values(trend).sort((a, b) => a.date.localeCompare(b.date));
   },
 
-  async getMonthlyComparison(userId: string): Promise<Record<string, any>> {
+  async getMonthlyComparison(organizationId: string): Promise<Record<string, { inflow: number; outflow: number; net: number }>> {
     const now = new Date();
-    const months: Record<string, any> = {};
+    const months: Record<string, { inflow: number; outflow: number; net: number }> = {};
 
     for (let i = 0; i < 12; i++) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthKey = date.toISOString().slice(0, 7);
-      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-
-      const transactions = await Transaction.find({
-        userId,
-        createdAt: { $gte: date, $lte: monthEnd },
-      });
-
-      const inflow = transactions.filter(t => t.type === 'inflow').reduce((sum, t) => sum + t.amount, 0);
-      const outflow = transactions.filter(t => t.type === 'outflow').reduce((sum, t) => sum + t.amount, 0);
-
+      const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+      const monthKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
+      const t = await totals(organizationId, start, end);
       months[monthKey] = {
-        inflow,
-        outflow,
-        net: inflow - outflow,
+        inflow: fromMinor(t.income),
+        outflow: fromMinor(t.expense),
+        net: fromMinor(t.income - t.expense),
       };
     }
 

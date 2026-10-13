@@ -11,6 +11,9 @@ const envSchema = z.object({
   CLIENT_URL: z.string().url('Invalid CLIENT_URL'),
   HTTPS_ONLY: z.string().default('false'),
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
+  // Email is optional: without a key, notifications are in-app only.
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default('ledgerHQ <info@methynix.com>'),
 });
 
 type RawEnvVars = z.infer<typeof envSchema>;
@@ -26,6 +29,8 @@ export interface EnvVars {
   CLIENT_URL: string;
   HTTPS_ONLY: boolean;
   LOG_LEVEL: 'error' | 'warn' | 'info' | 'debug';
+  RESEND_API_KEY?: string;
+  EMAIL_FROM: string;
 }
 
 function trimEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

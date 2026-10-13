@@ -1,19 +1,22 @@
 import { Request, Response, NextFunction } from 'express';
 import { Transaction } from '../models/Transaction';
 import { sendSuccess, sendPaginated } from '../utils/response';
-import { AuthorizationError } from '../utils/errors';
-import { securityLogger } from '../services/securityLogger';
+import { orgScope } from '../middleware/auth';
+import { ledgerService, LedgerInput } from '../services/ledgerService';
+import { budgetService } from '../services/budgetService';
+import { parse } from '../utils/validate';
+import { createTransactionSchema, updateTransactionSchema } from '../validators/transaction';
 
 export const transactionController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
     try {
       const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 500);
       const skip = (page - 1) * limit;
 
       const [transactions, total] = await Promise.all([
-        Transaction.find({ userId: req.user?.userId }).skip(skip).limit(limit).sort({ createdAt: -1 }),
-        Transaction.countDocuments({ userId: req.user?.userId }),
+        Transaction.find(orgScope(req)).sort({ transactionDate: -1, createdAt: -1 }).skip(skip).limit(limit),
+        Transaction.countDocuments(orgScope(req)),
       ]);
 
       sendPaginated(res, 200, transactions, { page, limit, total });
@@ -24,11 +27,10 @@ export const transactionController = {
 
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const transaction = await Transaction.create({
-        ...req.body,
-        userId: req.user?.userId,
-      });
+      const input = parse(createTransactionSchema, req.body);
+      const transaction = await ledgerService.create(req.user!.organizationId!, req.user!.userId, input as LedgerInput);
       sendSuccess(res, 201, transaction);
+      if (transaction.type === 'expense') budgetService.checkAndNotify(req.user!.organizationId!);
     } catch (error) {
       next(error);
     }
@@ -36,16 +38,10 @@ export const transactionController = {
 
   async update(req: Request, res: Response, next: NextFunction) {
     try {
-      const transaction = await Transaction.findOne({ _id: req.params.id, userId: req.user?.userId });
-
-      if (!transaction) {
-        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `transaction:${req.params.id}`, req.ip || 'unknown');
-        throw new AuthorizationError('Not authorized to update this transaction');
-      }
-
-      const { userId: _userId, ...changes } = req.body;
-      const updated = await Transaction.findByIdAndUpdate(req.params.id, changes, { new: true, runValidators: true });
+      const changes = parse(updateTransactionSchema, req.body);
+      const updated = await ledgerService.update(req.user!.organizationId!, req.params.id as string, changes);
       sendSuccess(res, 200, updated);
+      budgetService.checkAndNotify(req.user!.organizationId!);
     } catch (error) {
       next(error);
     }
@@ -53,15 +49,9 @@ export const transactionController = {
 
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const transaction = await Transaction.findOne({ _id: req.params.id, userId: req.user?.userId });
-
-      if (!transaction) {
-        securityLogger.logPermissionDenied(req.user?.userId || 'unknown', `transaction:${req.params.id}`, req.ip || 'unknown');
-        throw new AuthorizationError('Not authorized to delete this transaction');
-      }
-
-      await Transaction.findByIdAndDelete(req.params.id);
+      const removed = await ledgerService.remove(req.user!.organizationId!, req.params.id as string);
       sendSuccess(res, 200, { message: 'Transaction deleted' });
+      if (removed.type === 'expense') budgetService.checkAndNotify(req.user!.organizationId!);
     } catch (error) {
       next(error);
     }

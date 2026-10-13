@@ -10,6 +10,9 @@ import analyticsRoutes from './analytics';
 import recurringRoutes from './recurringTransactions';
 import budgetRoutes from './budgets';
 import reportRoutes from './reports';
+import notificationRoutes from './notifications';
+import organizationRoutes from './organizations';
+import invitationRoutes from './invitations';
 
 const router = Router();
 
@@ -25,5 +28,8 @@ router.use('/analytics', analyticsRoutes);
 router.use('/recurring-transactions', recurringRoutes);
 router.use('/budgets', budgetRoutes);
 router.use('/reports', reportRoutes);
+router.use('/notifications', notificationRoutes);
+router.use('/organizations', organizationRoutes);
+router.use('/invitations', invitationRoutes);
 
 export default router;

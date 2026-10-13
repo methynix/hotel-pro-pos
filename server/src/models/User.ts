@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import bcrypt from 'bcrypt';
+import { UserRole } from '../types/api';
 
 export interface IUserPreferences {
   currency: string;
@@ -9,13 +10,22 @@ export interface IUserPreferences {
   weeklySummary: boolean;
 }
 
+export interface IMembership {
+  organizationId: mongoose.Types.ObjectId;
+  role: UserRole;
+  joinedAt: Date;
+}
+
 export interface IUser extends Document {
   email: string;
   password: string;
   name: string;
-  role: 'admin' | 'manager' | 'viewer' | 'operator';
+  /** A user's role is per organization, never global. */
+  organizations: IMembership[];
+  activeOrganizationId?: mongoose.Types.ObjectId | null;
   isActive: boolean;
   preferences: IUserPreferences;
+  lastWeeklySummaryAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   comparePassword(password: string): Promise<boolean>;
@@ -42,20 +52,25 @@ const userSchema = new Schema<IUser>(
       required: [true, 'Name is required'],
       trim: true,
     },
-    role: {
-      type: String,
-      enum: {
-        values: ['admin', 'manager', 'viewer', 'operator'],
-        message: 'Invalid role',
+    organizations: [
+      {
+        _id: false,
+        organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
+        role: {
+          type: String,
+          enum: { values: ['admin', 'manager', 'viewer', 'operator'], message: 'Invalid role' },
+          required: true,
+        },
+        joinedAt: { type: Date, default: Date.now },
       },
-      default: 'viewer',
-    },
+    ],
+    activeOrganizationId: { type: Schema.Types.ObjectId, ref: 'Organization', default: null },
     isActive: {
       type: Boolean,
       default: true,
     },
     preferences: {
-      currency: { type: String, default: 'USD' },
+      currency: { type: String, default: 'TZS' },
       dateFormat: {
         type: String,
         enum: ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD'],
@@ -65,11 +80,14 @@ const userSchema = new Schema<IUser>(
       budgetAlerts: { type: Boolean, default: true },
       weeklySummary: { type: Boolean, default: false },
     },
+    lastWeeklySummaryAt: Date,
   },
   {
     timestamps: true,
   }
 );
+
+userSchema.index({ 'organizations.organizationId': 1 });
 
 // Pre-save hook to hash password if modified
 userSchema.pre('save', async function (next) {

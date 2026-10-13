@@ -1,19 +1,18 @@
 import { z } from 'zod';
+import { organizationNameSchema } from './organization';
 
 export const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
+// Signing up founds a new organization; joining an existing one goes
+// through an invitation instead.
 export const registerSchema = z.object({
-  email: z.string().email('Invalid email address'),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .regex(/[A-Z]/, 'Password must contain uppercase letter')
-    .regex(/[0-9]/, 'Password must contain number')
-    .regex(/[!@#$%^&*]/, 'Password must contain special character'),
-  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  name: z.string().trim().min(2, 'Name must be at least 2 characters'),
+  organizationName: organizationNameSchema,
 });
 
 export const updateProfileSchema = z.object({

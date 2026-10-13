@@ -3,10 +3,11 @@ import bcrypt from 'bcrypt';
 import env from '../config/env';
 import { AuthenticationError, ValidationError, ConflictError } from '../utils/errors';
 
+// Roles live per organization and are read from the database on each
+// request, so they are intentionally not part of the token.
 interface TokenPayload {
   userId: string;
   email: string;
-  role: string;
 }
 
 interface AuthTokens {

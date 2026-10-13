@@ -6,7 +6,8 @@ export interface ICategory extends Document {
   icon?: string;
   color?: string;
   type: 'expense' | 'income';
-  userId: mongoose.Types.ObjectId;
+  organizationId: mongoose.Types.ObjectId;
+  createdBy: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -18,7 +19,8 @@ const categorySchema = new Schema<ICategory>(
     icon: String,
     color: String,
     type: { type: String, enum: ['expense', 'income'], required: true },
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   },
   { timestamps: true }
 );

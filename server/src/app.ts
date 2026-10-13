@@ -72,6 +72,8 @@ app.get('/health', asyncHandler(async (req: Request, res: Response) => {
 // API Routes with rate limiting
 app.use('/api/v1/auth/login', authLimiter);
 app.use('/api/v1/auth/register', authLimiter);
+// Invite tokens are guessable only in theory, but rate-limit the public endpoints anyway.
+app.use('/api/v1/invitations/token', authLimiter);
 app.use('/api/v1', generalLimiter);
 app.use('/api/v1', csrfTokenValidator, v1Routes);
 

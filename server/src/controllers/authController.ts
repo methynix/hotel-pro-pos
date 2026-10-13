@@ -1,22 +1,37 @@
 import { Request, Response, NextFunction } from 'express';
-import { User } from '../models/User';
+import mongoose from 'mongoose';
+import { User, IUser } from '../models/User';
 import { authService } from '../services/authService';
 import { securityLogger } from '../services/securityLogger';
-import { AuthenticationError, ValidationError, ConflictError } from '../utils/errors';
-import { sendSuccess, sendError } from '../utils/response';
+import { organizationService } from '../services/organizationService';
+import { AuthenticationError, ValidationError, ConflictError, NotFoundError } from '../utils/errors';
+import { sendSuccess } from '../utils/response';
+import { parse } from '../utils/validate';
 import env from '../config/env';
-import { IUser } from '../models/User';
-import { updateProfileSchema, changePasswordSchema } from '../validators/auth';
+import { registerSchema, updateProfileSchema, changePasswordSchema } from '../validators/auth';
+import { switchOrganizationSchema } from '../validators/organization';
+import { notificationService } from '../services/notificationService';
+import { emailService, renderEmail } from '../services/emailService';
 
-const toPublicUser = (user: IUser) => ({
-  id: user._id,
-  email: user.email,
-  name: user.name,
-  role: user.role,
-  isActive: user.isActive,
-  preferences: user.preferences,
-  createdAt: user.createdAt,
-});
+/** Issues tokens for `user` and responds with the access token and public user. */
+export async function startSession(res: Response, user: IUser, status = 200): Promise<void> {
+  const { accessToken, refreshToken } = authService.generateTokens({
+    userId: user._id.toString(),
+    email: user.email,
+  });
+
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: env.HTTPS_ONLY,
+    sameSite: env.HTTPS_ONLY ? 'none' : 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  });
+
+  sendSuccess(res, status, {
+    accessToken,
+    user: await organizationService.toPublicUser(user),
+  });
+}
 
 export const authController = {
   async login(req: Request, res: Response, next: NextFunction) {
@@ -48,25 +63,7 @@ export const authController = {
         throw new AuthenticationError('This account has been deactivated. Contact an administrator.');
       }
 
-      // Generate tokens
-      const { accessToken, refreshToken } = authService.generateTokens({
-        userId: user._id.toString(),
-        email: user.email,
-        role: user.role,
-      });
-
-      // Set refresh token in HttpOnly cookie
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: env.HTTPS_ONLY,
-        sameSite: env.HTTPS_ONLY ? 'none' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
-
-      sendSuccess(res, 200, {
-        accessToken,
-        user: toPublicUser(user),
-      });
+      await startSession(res, user);
     } catch (error) {
       next(error);
     }
@@ -74,49 +71,28 @@ export const authController = {
 
   async register(req: Request, res: Response, next: NextFunction) {
     try {
-      const { email, password, name } = req.body;
+      const { email, password, name, organizationName } = parse(registerSchema, req.body);
 
-      // Validate input
-      if (!email || !password || !name) {
-        throw new ValidationError('Email, password, and name are required');
-      }
-
-      if (password.length < 8) {
-        throw new ValidationError('Password must be at least 8 characters');
-      }
-
-      // Check if user exists
-      const existingUser = await User.findOne({ email: email.toLowerCase() });
-      if (existingUser) {
+      if (await User.exists({ email })) {
         throw new ConflictError('Email already registered');
       }
 
-      // Create user
-      const user = await User.create({
-        email: email.toLowerCase(),
-        password,
-        name,
-        role: 'viewer',
+      // The founder becomes the admin of a brand-new organization. Both are
+      // created together so a failure can't leave an orphaned user or org.
+      const user = await mongoose.connection.transaction(async (session) => {
+        const [created] = await User.create([{ email, password, name }], { session });
+        await organizationService.createForUser(organizationName, created, session);
+        return created;
       });
 
-      // Generate tokens
-      const { accessToken, refreshToken } = authService.generateTokens({
-        userId: user._id.toString(),
-        email: user.email,
-        role: user.role,
-      });
+      await startSession(res, user, 201);
 
-      // Set refresh token cookie
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: env.HTTPS_ONLY,
-        sameSite: env.HTTPS_ONLY ? 'none' : 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
-
-      sendSuccess(res, 201, {
-        accessToken,
-        user: toPublicUser(user),
+      notificationService.notify(user, {
+        category: 'account',
+        title: 'Welcome to ledgerHQ',
+        message: `${organizationName} is ready. Add your accounts, then invite your team from the Users page.`,
+        link: '/app/accounts',
+        email: { actionLabel: 'Open ledgerHQ' },
       });
     } catch (error) {
       next(error);
@@ -130,7 +106,25 @@ export const authController = {
         throw new AuthenticationError('User not found');
       }
 
-      sendSuccess(res, 200, toPublicUser(user));
+      sendSuccess(res, 200, await organizationService.toPublicUser(user));
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  /** Makes another of the user's organizations the active one. */
+  async switchOrganization(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { organizationId } = parse(switchOrganizationSchema, req.body);
+      const user = await User.findById(req.user?.userId);
+      if (!user) throw new AuthenticationError('User not found');
+
+      if (!user.organizations.some((m) => m.organizationId.toString() === organizationId)) {
+        throw new NotFoundError('Organization');
+      }
+      user.activeOrganizationId = new mongoose.Types.ObjectId(organizationId);
+      await user.save();
+      sendSuccess(res, 200, await organizationService.toPublicUser(user));
     } catch (error) {
       next(error);
     }
@@ -149,6 +143,7 @@ export const authController = {
         throw new AuthenticationError('User not found');
       }
 
+      const previousEmail = user.email;
       if (email && email.toLowerCase() !== user.email) {
         if (await User.exists({ email: email.toLowerCase() })) {
           throw new ConflictError('Email already registered');
@@ -161,7 +156,23 @@ export const authController = {
       }
 
       await user.save();
-      sendSuccess(res, 200, toPublicUser(user));
+      sendSuccess(res, 200, await organizationService.toPublicUser(user));
+
+      if (user.email !== previousEmail) {
+        const message = `The email address on your ledgerHQ account was changed from ${previousEmail} to ${user.email}. If you did not do this, contact info@methynix.com immediately.`;
+        notificationService.notify(user, {
+          category: 'security',
+          title: 'Your email address was changed',
+          message,
+          link: '/app/settings',
+        });
+        // Also warn the old address, in case the account was taken over.
+        emailService.send(
+          previousEmail,
+          'Your ledgerHQ email address was changed',
+          renderEmail({ heading: 'Your email address was changed', paragraphs: [message] })
+        );
+      }
     } catch (error) {
       next(error);
     }
@@ -190,6 +201,13 @@ export const authController = {
       user.password = newPassword;
       await user.save();
       sendSuccess(res, 200, { message: 'Password updated' });
+
+      notificationService.notify(user, {
+        category: 'security',
+        title: 'Your password was changed',
+        message: `Your ledgerHQ password was changed on ${new Date().toLocaleString('en-GB', { timeZone: 'Africa/Dar_es_Salaam' })} (EAT). If this wasn't you, contact info@methynix.com immediately.`,
+        link: '/app/settings',
+      });
     } catch (error) {
       next(error);
     }
