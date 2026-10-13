@@ -8,36 +8,83 @@ export interface UserPreferences {
   weeklySummary: boolean;
 }
 
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+  baseCurrency: string;
+}
+
+export interface OrganizationMembership extends OrganizationSummary {
+  role: UserRole;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
   name: string;
-  role: UserRole;
+  /** Role in the active organization; null when the user isn't in one. */
+  role: UserRole | null;
+  organization: OrganizationSummary | null;
+  organizations: OrganizationMembership[];
   isActive?: boolean;
   preferences?: UserPreferences;
   createdAt?: string;
 }
 
+/** A member of the active organization. */
 export interface User {
   _id: string;
   email: string;
   name: string;
   role: UserRole;
+  joinedAt: string;
   isActive: boolean;
   createdAt: string;
-  updatedAt: string;
 }
+
+export interface Invitation {
+  _id: string;
+  email: string;
+  role: UserRole;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface InvitationPreview {
+  email: string;
+  role: UserRole;
+  organizationName: string;
+  invitedBy: string;
+  expiresAt: string;
+  existingUser: boolean;
+}
+
+export interface Organization {
+  _id: string;
+  name: string;
+  baseCurrency: string;
+  createdAt: string;
+}
+
+export type TransactionType = 'income' | 'expense' | 'transfer';
 
 export interface Transaction {
   _id: string;
+  type: TransactionType;
   amount: number;
   description: string;
-  category: string;
-  type: 'inflow' | 'outflow';
+  /** Income and expense only. */
+  accountId?: string;
+  categoryId?: string;
+  /** Transfers only. */
+  fromAccountId?: string;
+  toAccountId?: string;
+  /** When the money moved; createdAt is only when it was recorded. */
+  transactionDate: string;
   status: 'completed' | 'pending' | 'failed';
   paymentMethod?: string;
   reference?: string;
-  userId: string;
+  createdBy: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -46,10 +93,10 @@ export interface Expense {
   _id: string;
   amount: number;
   description: string;
-  category: string;
+  categoryId: string;
   status: 'pending' | 'approved' | 'rejected';
   notes?: string;
-  userId: string;
+  createdBy: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -58,11 +105,13 @@ export interface Account {
   _id: string;
   name: string;
   accountNumber: string;
-  balance: number;
+  /** What the account held before any recorded transaction. */
+  openingBalance: number;
+  /** Kept in step with transactions by the server. For credit accounts, the amount owed. */
+  currentBalance: number;
   currency: string;
   type: 'checking' | 'savings' | 'credit';
   status: 'active' | 'inactive';
-  userId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,7 +123,6 @@ export interface Category {
   icon?: string;
   color?: string;
   type: 'expense' | 'income';
-  userId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,7 +134,6 @@ export interface Report {
   startDate: string;
   endDate: string;
   data: Record<string, any>;
-  userId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -98,7 +145,6 @@ export interface Budget {
   period: 'monthly' | 'quarterly' | 'yearly';
   currentSpending: number;
   alertThreshold: number;
-  userId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -107,12 +153,15 @@ export interface RecurringTransaction {
   _id: string;
   amount: number;
   description: string;
-  category: string;
-  type: 'inflow' | 'outflow';
+  type: 'income' | 'expense';
+  accountId: string;
+  categoryId: string;
   frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
   nextDate: string;
+  lastExecuted?: string;
+  /** Why the last scheduled run failed, e.g. the account was deactivated. */
+  lastError?: string;
   isActive: boolean;
-  userId: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -173,10 +222,22 @@ export interface LoginCredentials {
 
 export interface RegisterData extends LoginCredentials {
   name: string;
+  organizationName: string;
 }
 
 // The refresh token is set as an HttpOnly cookie, not returned in the body.
 export interface AuthResponse {
   accessToken: string;
   user: AuthUser;
+}
+
+export interface AppNotification {
+  _id: string;
+  category: 'account' | 'security' | 'budget' | 'summary';
+  title: string;
+  message: string;
+  link?: string;
+  read: boolean;
+  emailed: boolean;
+  createdAt: string;
 }

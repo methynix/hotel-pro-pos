@@ -39,10 +39,13 @@ const CategoriesManagement: FC = () => {
   const perms = usePermissions();
   const toast = useToast();
 
-  const { data: categories, setData: setCategories, loading, error, reload } = useAsyncData(
-    () => categoryService.getAllCategories(),
-    [] as Category[]
-  );
+  const {
+    data: categories,
+    setData: setCategories,
+    loading,
+    error,
+    reload,
+  } = useAsyncData(() => categoryService.getAllCategories(), [] as Category[]);
 
   const [tab, setTab] = useState<'' | CategoryType>('');
   const [search, setSearch] = useState('');
@@ -62,7 +65,7 @@ const CategoriesManagement: FC = () => {
       expense: categories.filter((c) => c.type === 'expense').length,
       income: categories.filter((c) => c.type === 'income').length,
     }),
-    [categories]
+    [categories],
   );
 
   const visible = useMemo(() => {
@@ -100,7 +103,7 @@ const CategoriesManagement: FC = () => {
       return;
     }
     const duplicate = categories.find(
-      (c) => c.name.toLowerCase() === name.toLowerCase() && c.type === form.type && c._id !== editing?._id
+      (c) => c.name.toLowerCase() === name.toLowerCase() && c.type === form.type && c._id !== editing?._id,
     );
     if (duplicate) {
       setFormError(`An ${form.type} category named "${duplicate.name}" already exists`);
@@ -148,10 +151,10 @@ const CategoriesManagement: FC = () => {
       <div className="space-y-6">
         <SkeletonHeader withAction={perms.canCreate} />
         <div className="flex gap-3">
-          <Skeleton className="h-10 w-64" />
-          <Skeleton className="h-10 flex-1" />
+          <Skeleton className="h-9 w-56" />
+          <Skeleton className="h-9 flex-1" />
         </div>
-        <SkeletonCards count={6} />
+        <SkeletonCards count={7} />
       </div>
     );
   }
@@ -165,7 +168,7 @@ const CategoriesManagement: FC = () => {
         description="Organize income and expenses so reports and budgets stay meaningful"
         actions={
           perms.canCreate && (
-            <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+            <Button icon={<MdAdd className="w-4 h-4" />} onClick={openCreate}>
               New Category
             </Button>
           )
@@ -176,21 +179,21 @@ const CategoriesManagement: FC = () => {
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
       <div className="flex flex-col md:flex-row gap-3">
-        <div className="inline-flex p-1 bg-surface border border-border rounded-lg" role="tablist">
+        <div className="inline-flex p-0.5 bg-secondary-100 rounded-md self-start" role="tablist">
           {TABS.map((t) => (
             <button
               key={t.id}
               role="tab"
               aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                tab === t.id ? 'bg-accent-600 text-white shadow-sm' : 'text-text-secondary hover:text-text-primary'
+              className={`px-3 h-8 rounded text-sm transition-colors ${
+                tab === t.id
+                  ? 'bg-surface text-text-primary font-medium border border-border'
+                  : 'text-text-secondary hover:text-text-primary border border-transparent'
               }`}
             >
               {t.label}
-              <span className={`ml-2 text-xs ${tab === t.id ? 'text-accent-100' : 'text-text-secondary'}`}>
-                {counts[t.id]}
-              </span>
+              <span className="ml-1.5 text-xs font-mono text-text-secondary">{counts[t.id]}</span>
             </button>
           ))}
         </div>
@@ -209,48 +212,41 @@ const CategoriesManagement: FC = () => {
           action={
             perms.canCreate &&
             categories.length === 0 && (
-              <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+              <Button icon={<MdAdd className="w-4 h-4" />} onClick={openCreate}>
                 New Category
               </Button>
             )
           }
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {visible.map((c) => {
-            const Icon = getCategoryIcon(c.icon);
-            const color = c.color || CATEGORY_COLORS[0];
-            return (
-              <div
-                key={c._id}
-                className="group bg-surface rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow p-6"
-              >
-                <div className="flex items-start gap-4">
-                  <div
-                    className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ backgroundColor: `${color}1A`, color }}
-                  >
-                    <Icon className="w-6 h-6" />
-                  </div>
+        <div className="panel overflow-hidden">
+          <ul className="divide-y divide-border">
+            {visible.map((c) => {
+              const Icon = getCategoryIcon(c.icon);
+              const color = c.color || CATEGORY_COLORS[0];
+              return (
+                <li
+                  key={c._id}
+                  className="flex items-center gap-4 px-4 py-3 hover:bg-secondary-50/70 transition-colors"
+                >
+                  <span className="w-1 self-stretch rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                  <Icon className="w-[18px] h-[18px] flex-shrink-0 text-secondary-500" />
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-text-primary truncate">{c.name}</h3>
-                    <span
-                      className={`inline-flex items-center gap-1 mt-1 text-xs font-medium ${
-                        c.type === 'income' ? 'text-success-600' : 'text-danger-600'
-                      }`}
-                    >
-                      {c.type === 'income' ? (
-                        <MdArrowUpward className="w-3.5 h-3.5" />
-                      ) : (
-                        <MdArrowDownward className="w-3.5 h-3.5" />
-                      )}
-                      {c.type === 'income' ? 'Income' : 'Expense'}
-                    </span>
+                    <p className="text-sm font-medium text-text-primary truncate">{c.name}</p>
+                    {c.description && <p className="text-xs text-text-secondary truncate">{c.description}</p>}
                   </div>
+                  <span className="hidden sm:inline-flex items-center gap-1 text-xs text-text-secondary w-20">
+                    {c.type === 'income' ? (
+                      <MdArrowUpward className="w-3.5 h-3.5" />
+                    ) : (
+                      <MdArrowDownward className="w-3.5 h-3.5" />
+                    )}
+                    {c.type === 'income' ? 'Income' : 'Expense'}
+                  </span>
                   {(perms.canUpdate || perms.canDelete) && (
-                    <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
+                    <div className="flex gap-0.5">
                       {perms.canUpdate && (
-                        <IconButton label="Edit category" tone="accent" onClick={() => openEdit(c)}>
+                        <IconButton label="Edit category" onClick={() => openEdit(c)}>
                           <MdEdit className="w-4 h-4" />
                         </IconButton>
                       )}
@@ -261,13 +257,10 @@ const CategoriesManagement: FC = () => {
                       )}
                     </div>
                   )}
-                </div>
-                <p className="mt-4 text-sm text-text-secondary line-clamp-2 min-h-[2.5rem]">
-                  {c.description || 'No description'}
-                </p>
-              </div>
-            );
-          })}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 
@@ -291,13 +284,9 @@ const CategoriesManagement: FC = () => {
         <form id="category-form" onSubmit={handleSubmit} className="space-y-5">
           {formError && <ErrorBanner message={formError} />}
 
-          <div className="flex items-center gap-4 p-4 bg-background rounded-lg">
-            <div
-              className="w-12 h-12 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: `${form.color}1A`, color: form.color }}
-            >
-              <FormIcon className="w-7 h-7" />
-            </div>
+          <div className="flex items-center gap-3 px-3 py-2.5 border border-border rounded-md">
+            <span className="w-1 h-8 rounded-full" style={{ backgroundColor: form.color }} />
+            <FormIcon className="w-5 h-5 text-secondary-500" />
             <div>
               <p className="font-semibold text-text-primary">{form.name || 'Category name'}</p>
               <p className="text-xs text-text-secondary capitalize">{form.type}</p>
@@ -322,15 +311,17 @@ const CategoriesManagement: FC = () => {
                     id={`cat-type-${type}`}
                     type="button"
                     onClick={() => setForm({ ...form, type })}
-                    className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                    className={`flex items-center justify-center gap-1.5 h-9 px-3 rounded-md border text-sm font-medium transition-colors ${
                       form.type === type
-                        ? type === 'income'
-                          ? 'border-success-500 bg-success-50 text-success-700'
-                          : 'border-danger-500 bg-danger-50 text-danger-700'
-                        : 'border-border text-text-secondary hover:bg-background'
+                        ? 'border-primary-900 bg-primary-900 text-white'
+                        : 'border-border text-text-secondary hover:bg-secondary-50'
                     }`}
                   >
-                    {type === 'income' ? <MdArrowUpward className="w-4 h-4" /> : <MdArrowDownward className="w-4 h-4" />}
+                    {type === 'income' ? (
+                      <MdArrowUpward className="w-4 h-4" />
+                    ) : (
+                      <MdArrowDownward className="w-4 h-4" />
+                    )}
                     {type === 'income' ? 'Income' : 'Expense'}
                   </button>
                 ))}
@@ -349,7 +340,7 @@ const CategoriesManagement: FC = () => {
           </Field>
 
           <div>
-            <p className="block text-sm font-medium text-text-primary mb-2">Icon</p>
+            <p className="block text-xs font-medium text-text-secondary mb-1.5">Icon</p>
             <div className="grid grid-cols-6 sm:grid-cols-9 gap-2">
               {Object.entries(CATEGORY_ICONS).map(([key, Icon]) => (
                 <button
@@ -359,10 +350,10 @@ const CategoriesManagement: FC = () => {
                   aria-label={`Icon ${key}`}
                   aria-pressed={form.icon === key}
                   onClick={() => setForm({ ...form, icon: key })}
-                  className={`aspect-square rounded-lg flex items-center justify-center border transition-colors ${
+                  className={`aspect-square rounded-md flex items-center justify-center border transition-colors ${
                     form.icon === key
-                      ? 'border-accent-500 bg-accent-50 text-accent-700'
-                      : 'border-border text-text-secondary hover:bg-background'
+                      ? 'border-primary-900 bg-primary-900 text-white'
+                      : 'border-border text-text-secondary hover:bg-secondary-50'
                   }`}
                 >
                   <Icon className="w-5 h-5" />
@@ -372,7 +363,7 @@ const CategoriesManagement: FC = () => {
           </div>
 
           <div>
-            <p className="block text-sm font-medium text-text-primary mb-2">Color</p>
+            <p className="block text-xs font-medium text-text-secondary mb-1.5">Color</p>
             <div className="flex flex-wrap gap-2">
               {CATEGORY_COLORS.map((color) => (
                 <button

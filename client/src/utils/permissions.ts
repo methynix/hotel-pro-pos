@@ -17,7 +17,7 @@ export interface Permissions {
   isReadOnly: boolean;
 }
 
-export const getPermissions = (role?: UserRole): Permissions => {
+export const getPermissions = (role?: UserRole | null): Permissions => {
   const has = (allowed: UserRole[]) => !!role && allowed.includes(role);
   return {
     canCreate: has(CAN_CREATE),

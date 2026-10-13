@@ -11,9 +11,9 @@ interface Toast {
 }
 
 const STYLES: Record<ToastTone, { icon: typeof MdCheckCircle; className: string }> = {
-  success: { icon: MdCheckCircle, className: 'text-success-600' },
-  error: { icon: MdErrorOutline, className: 'text-danger-600' },
-  info: { icon: MdInfoOutline, className: 'text-info-600' },
+  success: { icon: MdCheckCircle, className: 'text-accent-300' },
+  error: { icon: MdErrorOutline, className: 'text-danger-300' },
+  info: { icon: MdInfoOutline, className: 'text-secondary-300' },
 };
 
 export const ToastProvider: FC<{ children: ReactNode }> = ({ children }) => {
@@ -54,18 +54,18 @@ export const ToastProvider: FC<{ children: ReactNode }> = ({ children }) => {
                 <motion.div
                   key={toast.id}
                   layout
-                  initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, x: 40 }}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
                   transition={{ duration: 0.18 }}
                   role={toast.tone === 'error' ? 'alert' : 'status'}
-                  className="flex items-start gap-3 bg-surface border border-border rounded-lg shadow-lg px-4 py-3"
+                  className="flex items-start gap-3 bg-primary-900 text-white rounded-xl shadow-lg px-4 py-3"
                 >
-                  <Icon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${className}`} />
-                  <p className="flex-1 text-sm text-text-primary">{toast.message}</p>
+                  <Icon className={`w-4 h-4 flex-shrink-0 mt-0.5 ${className}`} />
+                  <p className="flex-1 text-sm">{toast.message}</p>
                   <button
                     onClick={() => dismiss(toast.id)}
-                    className="p-0.5 rounded text-text-secondary hover:text-text-primary"
+                    className="p-0.5 rounded text-secondary-400 hover:text-white"
                     aria-label="Dismiss"
                   >
                     <MdClose className="w-4 h-4" />

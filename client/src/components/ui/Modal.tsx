@@ -51,7 +51,7 @@ const Modal: FC<ModalProps> = ({
     // Focus the first field so keyboard users can start typing straight away.
     const timer = window.setTimeout(() => {
       const focusable = panelRef.current?.querySelector<HTMLElement>(
-        'input:not([type=hidden]):not([disabled]), select, textarea, button[data-autofocus]'
+        'input:not([type=hidden]):not([disabled]), select, textarea, button[data-autofocus]',
       );
       (focusable ?? panelRef.current)?.focus();
     }, 50);
@@ -68,7 +68,7 @@ const Modal: FC<ModalProps> = ({
       {open && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
           <motion.div
-            className="absolute inset-0 bg-primary-950/50 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-primary-950/40"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -80,16 +80,16 @@ const Modal: FC<ModalProps> = ({
             aria-modal="true"
             aria-labelledby="modal-title"
             tabIndex={-1}
-            className={`relative w-full ${SIZES[size]} bg-surface rounded-xl shadow-2xl border border-border flex flex-col max-h-[90vh] outline-none`}
-            initial={{ opacity: 0, y: 16, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.98 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className={`relative w-full ${SIZES[size]} bg-surface rounded-xl shadow-xl border border-border flex flex-col max-h-[90vh] outline-none`}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.14, ease: 'easeOut' }}
           >
-            <div className="flex items-start gap-3 px-6 pt-6 pb-4">
+            <div className="flex items-start gap-3 px-6 py-4 border-b border-border">
               {icon && <div className="flex-shrink-0">{icon}</div>}
               <div className="flex-1 min-w-0">
-                <h2 id="modal-title" className="text-lg font-semibold text-text-primary">
+                <h2 id="modal-title" className="text-base font-semibold text-text-primary">
                   {title}
                 </h2>
                 {description && <p className="mt-1 text-sm text-text-secondary">{description}</p>}
@@ -98,15 +98,15 @@ const Modal: FC<ModalProps> = ({
                 type="button"
                 onClick={onClose}
                 disabled={!dismissible}
-                className="p-1.5 -mr-1.5 rounded-lg text-text-secondary hover:bg-background hover:text-text-primary disabled:opacity-40"
+                className="p-1 -mr-1 rounded-md text-text-secondary hover:bg-secondary-100 hover:text-text-primary disabled:opacity-40"
                 aria-label="Close"
               >
                 <MdClose className="w-5 h-5" />
               </button>
             </div>
-            <div className="px-6 pb-6 overflow-y-auto">{children}</div>
+            <div className="px-6 py-5 overflow-y-auto">{children}</div>
             {footer && (
-              <div className="px-6 py-4 border-t border-border bg-background/60 rounded-b-xl flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+              <div className="px-6 py-3 border-t border-border bg-secondary-50 rounded-b-xl flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                 {footer}
               </div>
             )}
@@ -114,7 +114,7 @@ const Modal: FC<ModalProps> = ({
         </div>
       )}
     </AnimatePresence>,
-    document.body
+    document.body,
   );
 };
 

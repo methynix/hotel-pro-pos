@@ -5,8 +5,9 @@ export const recurringTransactionService = {
   async createRecurring(data: {
     amount: number;
     description: string;
-    category: string;
-    type: 'inflow' | 'outflow';
+    type: 'income' | 'expense';
+    accountId: string;
+    categoryId: string;
     frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
     nextDate: string;
   }) {

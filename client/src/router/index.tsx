@@ -2,6 +2,7 @@ import { RouteObject } from 'react-router-dom';
 import App from '../App';
 import Login from '../pages/Login';
 import Signup from '../pages/Signup';
+import AcceptInvite from '../pages/AcceptInvite';
 import Dashboard from '../pages/Dashboard';
 import TransactionManagement from '../pages/TransactionManagement';
 import ExpenseManagement from '../pages/ExpenseManagement';
@@ -85,6 +86,10 @@ export const routes: RouteObject[] = [
       {
         path: 'signup',
         element: <Signup />,
+      },
+      {
+        path: 'invite/:token',
+        element: <AcceptInvite />,
       },
       {
         path: 'privacy',

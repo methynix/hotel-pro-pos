@@ -13,7 +13,7 @@ const MainLayout: FC = () => {
       <div className="flex-1 flex flex-col overflow-hidden print:overflow-visible">
         <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
         <main className="flex-1 overflow-auto print:overflow-visible">
-          <div className="p-6 md:p-8 print:p-0">
+          <div className="px-6 md:px-10 py-8 max-w-[1280px] print:p-0">
             <Outlet />
           </div>
         </main>

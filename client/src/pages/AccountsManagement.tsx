@@ -1,15 +1,5 @@
 import { FC, FormEvent, useMemo, useState } from 'react';
-import {
-  MdAccountBalance,
-  MdAccountBalanceWallet,
-  MdAdd,
-  MdCreditCard,
-  MdDelete,
-  MdEdit,
-  MdSavings,
-  MdTrendingDown,
-  MdTrendingUp,
-} from 'react-icons/md';
+import { MdAccountBalanceWallet, MdAdd, MdCreditCard, MdDelete, MdEdit, MdSavings } from 'react-icons/md';
 import { IconType } from 'react-icons';
 import { accountService } from '../services/accountService';
 import { Account } from '../types';
@@ -26,41 +16,44 @@ import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import EmptyState from '../components/ui/EmptyState';
 import ErrorBanner from '../components/ui/ErrorBanner';
-import StatCard from '../components/ui/StatCard';
+import StatCard, { StatStrip } from '../components/ui/StatCard';
 import ReadOnlyNotice from '../components/ui/ReadOnlyNotice';
 import { Field, Input, Select, Toggle } from '../components/ui/FormField';
-import { SkeletonCards, SkeletonHeader, SkeletonStatCards } from '../components/ui/Skeleton';
+import { SkeletonHeader, SkeletonStatCards, SkeletonTable } from '../components/ui/Skeleton';
 
 type AccountType = Account['type'];
 
-const TYPE_META: Record<AccountType, { label: string; icon: IconType; className: string }> = {
-  checking: { label: 'Checking', icon: MdAccountBalanceWallet, className: 'bg-accent-50 text-accent-600' },
-  savings: { label: 'Savings', icon: MdSavings, className: 'bg-success-50 text-success-600' },
-  credit: { label: 'Credit', icon: MdCreditCard, className: 'bg-warning-50 text-warning-600' },
+const TYPE_META: Record<AccountType, { label: string; icon: IconType }> = {
+  checking: { label: 'Checking', icon: MdAccountBalanceWallet },
+  savings: { label: 'Savings', icon: MdSavings },
+  credit: { label: 'Credit', icon: MdCreditCard },
 };
 
-const CURRENCIES = ['USD', 'EUR', 'GBP', 'KES', 'TZS', 'UGX', 'NGN', 'ZAR', 'CAD', 'AUD', 'JPY', 'INR'];
+const CURRENCIES = ['TZS', 'USD', 'EUR', 'GBP', 'KES', 'UGX', 'NGN', 'ZAR', 'CAD', 'AUD', 'JPY', 'INR'];
 
 const EMPTY_FORM = {
   name: '',
   accountNumber: '',
   type: 'checking' as AccountType,
-  currency: 'USD',
-  balance: '',
+  currency: 'TZS',
+  openingBalance: '',
   active: true,
 };
 
-const maskNumber = (value: string) => (value.length > 4 ? `•••• ${value.slice(-4)}` : value);
+const maskNumber = (value: string) => (value.length > 4 ? `**** ${value.slice(-4)}` : value);
 
 const AccountsManagement: FC = () => {
   const perms = usePermissions();
   const toast = useToast();
   const fmt = useFormatters();
 
-  const { data: accounts, setData: setAccounts, loading, error, reload } = useAsyncData(
-    () => accountService.getAllAccounts(),
-    [] as Account[]
-  );
+  const {
+    data: accounts,
+    setData: setAccounts,
+    loading,
+    error,
+    reload,
+  } = useAsyncData(() => accountService.getAllAccounts(), [] as Account[]);
 
   const [typeFilter, setTypeFilter] = useState<'' | AccountType>('');
   const [formOpen, setFormOpen] = useState(false);
@@ -71,15 +64,15 @@ const AccountsManagement: FC = () => {
   const [toDelete, setToDelete] = useState<Account | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Matches the server's balance sheet: checking + savings are assets,
-  // credit balances are liabilities.
+  // Matches the server's balance sheet: checking + savings are assets, and a
+  // credit account's balance is the amount owed.
   const totals = useMemo(() => {
     const assets = accounts
       .filter((a) => a.type !== 'credit' && a.status === 'active')
-      .reduce((sum, a) => sum + a.balance, 0);
+      .reduce((sum, a) => sum + a.currentBalance, 0);
     const liabilities = accounts
       .filter((a) => a.type === 'credit' && a.status === 'active')
-      .reduce((sum, a) => sum + Math.abs(a.balance), 0);
+      .reduce((sum, a) => sum + a.currentBalance, 0);
     return {
       assets,
       liabilities,
@@ -88,10 +81,7 @@ const AccountsManagement: FC = () => {
     };
   }, [accounts]);
 
-  const visible = useMemo(
-    () => accounts.filter((a) => !typeFilter || a.type === typeFilter),
-    [accounts, typeFilter]
-  );
+  const visible = useMemo(() => accounts.filter((a) => !typeFilter || a.type === typeFilter), [accounts, typeFilter]);
 
   const openCreate = () => {
     setEditing(null);
@@ -107,7 +97,7 @@ const AccountsManagement: FC = () => {
       accountNumber: a.accountNumber,
       type: a.type,
       currency: a.currency,
-      balance: String(a.balance),
+      openingBalance: String(a.openingBalance),
       active: a.status === 'active',
     });
     setFormError(null);
@@ -116,9 +106,9 @@ const AccountsManagement: FC = () => {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const balance = Number(form.balance || 0);
-    if (Number.isNaN(balance)) {
-      setFormError('Balance must be a number');
+    const openingBalance = Number(form.openingBalance || 0);
+    if (Number.isNaN(openingBalance)) {
+      setFormError('Opening balance must be a number');
       return;
     }
 
@@ -129,7 +119,7 @@ const AccountsManagement: FC = () => {
       accountNumber: form.accountNumber.trim(),
       type: form.type,
       currency: form.currency,
-      balance,
+      openingBalance,
       status: form.active ? 'active' : 'inactive',
     };
     try {
@@ -170,7 +160,7 @@ const AccountsManagement: FC = () => {
       <div className="space-y-6">
         <SkeletonHeader withAction={perms.canCreate} />
         <SkeletonStatCards />
-        <SkeletonCards count={3} />
+        <SkeletonTable rows={4} columns={5} />
       </div>
     );
   }
@@ -182,7 +172,7 @@ const AccountsManagement: FC = () => {
         description="Bank, savings and credit accounts that make up your balance sheet"
         actions={
           perms.canCreate && (
-            <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+            <Button icon={<MdAdd className="w-4 h-4" />} onClick={openCreate}>
               Add Account
             </Button>
           )
@@ -192,43 +182,44 @@ const AccountsManagement: FC = () => {
       {perms.isReadOnly && <ReadOnlyNotice />}
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Total Assets" value={fmt.money(totals.assets)} tone="success" icon={<MdTrendingUp className="w-5 h-5" />} />
-        <StatCard label="Liabilities" value={fmt.money(totals.liabilities)} tone="danger" icon={<MdTrendingDown className="w-5 h-5" />} />
-        <StatCard
-          label="Net Worth"
-          value={fmt.money(totals.net)}
-          tone="accent"
-          icon={<MdAccountBalance className="w-5 h-5" />}
-        />
+      <StatStrip>
+        <StatCard label="Total Assets" value={fmt.money(totals.assets)} tone="success" />
+        <StatCard label="Liabilities" value={fmt.money(totals.liabilities)} tone="danger" />
+        <StatCard label="Net Worth" value={fmt.money(totals.net)} tone="accent" />
         <StatCard
           label="Active Accounts"
           value={totals.active}
           tone="info"
-          icon={<MdAccountBalanceWallet className="w-5 h-5" />}
           hint={`${accounts.length - totals.active} inactive`}
         />
-      </div>
+      </StatStrip>
 
-      <div className="flex flex-wrap gap-2">
-        {(['', 'checking', 'savings', 'credit'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTypeFilter(t)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-              typeFilter === t
-                ? 'bg-accent-600 border-accent-600 text-white'
-                : 'bg-surface border-border text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            {t ? TYPE_META[t].label : 'All accounts'}
-          </button>
-        ))}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div
+          className="inline-flex p-0.5 bg-secondary-100 rounded-md self-start"
+          role="tablist"
+          aria-label="Account type"
+        >
+          {(['', 'checking', 'savings', 'credit'] as const).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={typeFilter === t}
+              onClick={() => setTypeFilter(t)}
+              className={`px-3 h-8 rounded text-sm transition-colors ${
+                typeFilter === t
+                  ? 'bg-surface text-text-primary font-medium border border-border'
+                  : 'text-text-secondary hover:text-text-primary border border-transparent'
+              }`}
+            >
+              {t ? TYPE_META[t].label : 'All'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {visible.length === 0 ? (
         <EmptyState
-          icon={<MdAccountBalance className="w-7 h-7" />}
           title={accounts.length === 0 ? 'No accounts yet' : 'No accounts of this type'}
           description={
             accounts.length === 0
@@ -238,70 +229,89 @@ const AccountsManagement: FC = () => {
           action={
             perms.canCreate &&
             accounts.length === 0 && (
-              <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+              <Button icon={<MdAdd className="w-4 h-4" />} onClick={openCreate}>
                 Add Account
               </Button>
             )
           }
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {visible.map((a) => {
-            const meta = TYPE_META[a.type];
-            const Icon = meta.icon;
-            return (
-              <div
-                key={a._id}
-                className={`bg-surface rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow p-6 ${
-                  a.status === 'inactive' ? 'opacity-70' : ''
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 ${meta.className}`}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-text-primary truncate">{a.name}</h3>
-                      <p className="text-xs text-text-secondary font-mono">{maskNumber(a.accountNumber)}</p>
-                    </div>
-                  </div>
-                  <Badge tone={a.status === 'active' ? 'success' : 'neutral'}>{a.status}</Badge>
-                </div>
-
-                <div className="mt-6">
-                  <p className="text-xs text-text-secondary mb-1">
-                    {a.type === 'credit' ? 'Outstanding balance' : 'Current balance'}
-                  </p>
-                  <p
-                    className={`text-2xl font-bold ${
-                      a.type === 'credit' ? 'text-danger-600' : a.balance < 0 ? 'text-danger-600' : 'text-text-primary'
-                    }`}
-                  >
-                    {formatCurrency(a.balance, a.currency)}
-                  </p>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-border flex items-center justify-between">
-                  <span className="text-xs text-text-secondary">
-                    {meta.label} · {a.currency}
-                  </span>
-                  <div className="flex gap-1">
-                    {perms.canUpdate && (
-                      <IconButton label="Edit account" tone="accent" onClick={() => openEdit(a)}>
-                        <MdEdit className="w-4 h-4" />
-                      </IconButton>
-                    )}
-                    {perms.canDelete && (
-                      <IconButton label="Delete account" tone="danger" onClick={() => setToDelete(a)}>
-                        <MdDelete className="w-4 h-4" />
-                      </IconButton>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="panel overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="ledger-table">
+              <thead>
+                <tr>
+                  <th>Account</th>
+                  <th>Type</th>
+                  <th>Number</th>
+                  <th>Status</th>
+                  <th className="text-right">Balance</th>
+                  {(perms.canUpdate || perms.canDelete) && <th className="w-20" />}
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((a) => {
+                  const meta = TYPE_META[a.type];
+                  const Icon = meta.icon;
+                  return (
+                    <tr key={a._id} className={a.status === 'inactive' ? 'text-text-secondary' : ''}>
+                      <td>
+                        <span className="font-medium text-text-primary">{a.name}</span>
+                        {a.currency !== fmt.currency && (
+                          <span className="ml-2 text-xs text-text-secondary font-mono">{a.currency}</span>
+                        )}
+                      </td>
+                      <td>
+                        <span className="inline-flex items-center gap-1.5 text-text-secondary">
+                          <Icon className="w-4 h-4" />
+                          {meta.label}
+                        </span>
+                      </td>
+                      <td className="font-mono text-text-secondary">{maskNumber(a.accountNumber)}</td>
+                      <td>
+                        <Badge tone={a.status === 'active' ? 'success' : 'neutral'}>{a.status}</Badge>
+                      </td>
+                      <td
+                        className={`num ${
+                          (a.type === 'credit' && a.currentBalance > 0) || (a.type !== 'credit' && a.currentBalance < 0)
+                            ? 'text-danger-600'
+                            : 'text-text-primary'
+                        }`}
+                      >
+                        {a.type === 'credit' && a.currentBalance > 0 ? '-' : ''}
+                        {formatCurrency(a.currentBalance, a.currency)}
+                      </td>
+                      {(perms.canUpdate || perms.canDelete) && (
+                        <td>
+                          <div className="flex justify-end gap-0.5">
+                            {perms.canUpdate && (
+                              <IconButton label="Edit account" onClick={() => openEdit(a)}>
+                                <MdEdit className="w-4 h-4" />
+                              </IconButton>
+                            )}
+                            {perms.canDelete && (
+                              <IconButton label="Delete account" tone="danger" onClick={() => setToDelete(a)}>
+                                <MdDelete className="w-4 h-4" />
+                              </IconButton>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="bg-secondary-50">
+                  <td colSpan={4} className="px-4 py-3 text-sm font-medium border-t border-border">
+                    Net position
+                  </td>
+                  <td className="num px-4 py-3 border-t border-border font-medium">{fmt.money(totals.net)}</td>
+                  {(perms.canUpdate || perms.canDelete) && <td className="border-t border-border" />}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       )}
 
@@ -332,7 +342,7 @@ const AccountsManagement: FC = () => {
               required
             />
           </Field>
-          <Field label="Account number" htmlFor="acc-number" required hint="Must be unique">
+          <Field label="Account number" htmlFor="acc-number" required hint="Must be unique within your business">
             <Input
               id="acc-number"
               value={form.accountNumber}
@@ -367,8 +377,9 @@ const AccountsManagement: FC = () => {
             </Field>
           </div>
           <Field
-            label={form.type === 'credit' ? 'Outstanding balance' : 'Opening balance'}
+            label={form.type === 'credit' ? 'Amount owed when you started' : 'Opening balance'}
             htmlFor="acc-balance"
+            hint="The balance before the first transaction you record here. Transactions keep it up to date from then on."
           >
             <Input
               id="acc-balance"
@@ -376,10 +387,18 @@ const AccountsManagement: FC = () => {
               step="0.01"
               inputMode="decimal"
               placeholder="0.00"
-              value={form.balance}
-              onChange={(e) => setForm({ ...form, balance: e.target.value })}
+              value={form.openingBalance}
+              onChange={(e) => setForm({ ...form, openingBalance: e.target.value })}
             />
           </Field>
+          {editing && (
+            <div className="flex items-center justify-between rounded-md bg-secondary-50 border border-border px-3 py-2 text-sm">
+              <span className="text-text-secondary">Current balance</span>
+              <span className="font-mono tabular text-text-primary">
+                {formatCurrency(editing.currentBalance, editing.currency)}
+              </span>
+            </div>
+          )}
           <Toggle
             id="acc-active"
             label="Active"
@@ -395,8 +414,8 @@ const AccountsManagement: FC = () => {
         title="Delete account"
         message={
           <>
-            Delete <strong className="text-text-primary">{toDelete?.name}</strong>? Its balance will be removed from
-            your balance sheet. This cannot be undone.
+            Delete <strong className="text-text-primary">{toDelete?.name}</strong>? Accounts that already have
+            transactions can't be deleted; mark them inactive instead so their history stays intact.
           </>
         }
         confirmLabel="Delete Account"

@@ -2,6 +2,7 @@ import { FC, ReactNode, useEffect, useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AuthContext, AuthContextType } from '../contexts/AuthContext';
 import { authService } from '../services/authService';
+import { organizationService } from '../services/organizationService';
 import { AuthUser, AuthResponse, ApiResponse, LoginCredentials, RegisterData } from '../types';
 
 interface AuthProviderProps {
@@ -109,14 +110,29 @@ export const AuthProvider: FC<AuthProviderProps> = ({ children }) => {
 
   const value: AuthContextType = {
     user: currentUser ?? null,
-    isLoading,
+    // A stored token whose user hasn't been fetched yet still counts as
+    // loading; otherwise a page refresh briefly looks signed-out and
+    // ProtectedRoute bounces deep links to the dashboard.
+    isLoading: isLoading || (!!token && !isInitialized),
     isAuthenticated: !!token && !!currentUser,
     login: async (email: string, password: string, remember = false) => {
       await loginMutation.mutateAsync({ email, password, remember });
     },
     // A fresh sign-up has no "Remember me" choice yet, so keep them signed in.
-    register: async (name: string, email: string, password: string) => {
-      await registerMutation.mutateAsync({ name, email, password, remember: true });
+    register: async (name: string, email: string, password: string, organizationName: string) => {
+      await registerMutation.mutateAsync({ name, email, password, organizationName, remember: true });
+    },
+    startSession: (session: AuthResponse) => {
+      authService.setToken(session.accessToken, true);
+      setToken(session.accessToken);
+      queryClient.setQueryData(['currentUser'], session.user);
+    },
+    // Every page holds data for the active organization, so a full reload
+    // is the simplest way to guarantee nothing from the old one lingers.
+    switchOrganization: async (organizationId: string) => {
+      await organizationService.switchTo(organizationId);
+      queryClient.clear();
+      window.location.assign('/app');
     },
     logout: async () => {
       await logoutMutation.mutateAsync();

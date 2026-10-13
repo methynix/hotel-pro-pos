@@ -8,15 +8,17 @@ import {
   MdPause,
   MdPlayArrow,
   MdRepeat,
+  MdErrorOutline,
 } from 'react-icons/md';
 import { recurringTransactionService } from '../services/recurringTransactionService';
 import { categoryService } from '../services/categoryService';
-import { Category, RecurringTransaction } from '../types';
+import { accountService } from '../services/accountService';
+import { Account, Category, RecurringTransaction } from '../types';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { usePermissions } from '../hooks/usePermissions';
 import { useToast } from '../hooks/useToast';
 import { useFormatters } from '../hooks/useFormatters';
-import { errorMessage } from '../utils/format';
+import { apiToDateInput, dateInputToApi, errorMessage, todayInput } from '../utils/format';
 import { SafeText } from '../utils/SafeText';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
@@ -26,7 +28,7 @@ import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import EmptyState from '../components/ui/EmptyState';
 import ErrorBanner from '../components/ui/ErrorBanner';
-import StatCard from '../components/ui/StatCard';
+import StatCard, { StatStrip } from '../components/ui/StatCard';
 import ReadOnlyNotice from '../components/ui/ReadOnlyNotice';
 import { Field, Input, Select } from '../components/ui/FormField';
 import { SkeletonHeader, SkeletonStatCards, SkeletonTable } from '../components/ui/Skeleton';
@@ -39,15 +41,14 @@ const FREQUENCIES: Frequency[] = ['daily', 'weekly', 'monthly', 'quarterly', 'ye
 // Rough monthly equivalents, used for the projected monthly totals.
 const PER_MONTH: Record<Frequency, number> = { daily: 30, weekly: 4.33, monthly: 1, quarterly: 1 / 3, yearly: 1 / 12 };
 
-const today = () => new Date().toISOString().split('T')[0];
-
 const EMPTY_FORM = {
   description: '',
   amount: '',
-  type: 'outflow' as TxType,
-  category: '',
+  type: 'expense' as TxType,
+  accountId: '',
+  categoryId: '',
   frequency: 'monthly' as Frequency,
-  nextDate: today(),
+  nextDate: '',
 };
 
 const RecurringTransactionManagement: FC = () => {
@@ -57,15 +58,16 @@ const RecurringTransactionManagement: FC = () => {
 
   const { data, setData, loading, error, reload } = useAsyncData(
     async () => {
-      const [items, categories] = await Promise.all([
+      const [items, categories, accounts] = await Promise.all([
         recurringTransactionService.getAllRecurring(),
         categoryService.getAllCategories().catch(() => [] as Category[]),
+        accountService.getAllAccounts().catch(() => [] as Account[]),
       ]);
-      return { items, categories };
+      return { items, categories, accounts };
     },
-    { items: [] as RecurringTransaction[], categories: [] as Category[] }
+    { items: [] as RecurringTransaction[], categories: [] as Category[], accounts: [] as Account[] },
   );
-  const { items, categories } = data;
+  const { items, categories, accounts } = data;
   const setItems = (update: (list: RecurringTransaction[]) => RecurringTransaction[]) =>
     setData((d) => ({ ...d, items: update(d.items) }));
 
@@ -78,22 +80,27 @@ const RecurringTransactionManagement: FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
 
-  // Older records stored a category id instead of its name.
-  const categoryName = (value: string) => categories.find((c) => c._id === value)?.name || value;
+  const categoryName = (id: string) => categories.find((c) => c._id === id)?.name || 'Uncategorized';
+  const accountName = (id: string) => accounts.find((a) => a._id === id)?.name || 'Unknown account';
+  const accountOptions = (selected: string) => accounts.filter((a) => a.status === 'active' || a._id === selected);
 
   const projections = useMemo(() => {
     const active = items.filter((i) => i.isActive);
     const monthly = (type: TxType) =>
       active.filter((i) => i.type === type).reduce((s, i) => s + i.amount * PER_MONTH[i.frequency], 0);
-    return { inflow: monthly('inflow'), outflow: monthly('outflow'), active: active.length };
+    return { inflow: monthly('income'), outflow: monthly('expense'), active: active.length };
   }, [items]);
 
-  const categoryOptions = (type: TxType) =>
-    categories.filter((c) => c.type === (type === 'inflow' ? 'income' : 'expense')).map((c) => c.name);
+  const categoryOptions = (type: TxType) => categories.filter((c) => c.type === type);
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...EMPTY_FORM, nextDate: today(), category: categoryOptions('outflow')[0] || '' });
+    setForm({
+      ...EMPTY_FORM,
+      nextDate: todayInput(),
+      accountId: accounts.find((a) => a.status === 'active')?._id || '',
+      categoryId: categoryOptions('expense')[0]?._id || '',
+    });
     setFormError(null);
     setFormOpen(true);
   };
@@ -104,9 +111,10 @@ const RecurringTransactionManagement: FC = () => {
       description: item.description,
       amount: String(item.amount),
       type: item.type,
-      category: categoryName(item.category),
+      accountId: item.accountId,
+      categoryId: item.categoryId,
       frequency: item.frequency,
-      nextDate: item.nextDate?.split('T')[0] || today(),
+      nextDate: apiToDateInput(item.nextDate) || todayInput(),
     });
     setFormError(null);
     setFormOpen(true);
@@ -116,7 +124,8 @@ const RecurringTransactionManagement: FC = () => {
     e.preventDefault();
     const amount = Number(form.amount);
     if (!amount || amount <= 0) return setFormError('Enter an amount greater than zero');
-    if (!form.category.trim()) return setFormError('Choose a category');
+    if (!form.accountId) return setFormError('Choose an account');
+    if (!form.categoryId) return setFormError('Choose a category');
 
     setSaving(true);
     setFormError(null);
@@ -124,9 +133,10 @@ const RecurringTransactionManagement: FC = () => {
       description: form.description.trim(),
       amount,
       type: form.type,
-      category: form.category.trim(),
+      accountId: form.accountId,
+      categoryId: form.categoryId,
       frequency: form.frequency,
-      nextDate: form.nextDate,
+      nextDate: dateInputToApi(form.nextDate),
     };
     try {
       if (editing) {
@@ -184,7 +194,7 @@ const RecurringTransactionManagement: FC = () => {
     );
   }
 
-  const formCategories = Array.from(new Set([...categoryOptions(form.type), form.category].filter(Boolean)));
+  const formCategories = categoryOptions(form.type);
 
   return (
     <div className="space-y-6">
@@ -192,8 +202,9 @@ const RecurringTransactionManagement: FC = () => {
         title="Recurring Transactions"
         description="Schedule regular income and expenses such as rent, payroll or subscriptions"
         actions={
-          perms.canCreate && (
-            <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+          perms.canCreate &&
+          accounts.length > 0 && (
+            <Button icon={<MdAdd className="w-4 h-4" />} onClick={openCreate}>
               New Schedule
             </Button>
           )
@@ -203,75 +214,73 @@ const RecurringTransactionManagement: FC = () => {
       {perms.isReadOnly && <ReadOnlyNotice />}
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <StatCard
-          label="Projected Monthly Inflow"
-          value={fmt.money(projections.inflow)}
-          tone="success"
-          icon={<MdArrowUpward className="w-5 h-5" />}
-        />
-        <StatCard
-          label="Projected Monthly Outflow"
-          value={fmt.money(projections.outflow)}
-          tone="danger"
-          icon={<MdArrowDownward className="w-5 h-5" />}
-        />
+      <StatStrip columns={3}>
+        <StatCard label="Projected Monthly Inflow" value={fmt.money(projections.inflow)} tone="success" />
+        <StatCard label="Projected Monthly Outflow" value={fmt.money(projections.outflow)} tone="danger" />
         <StatCard
           label="Active Schedules"
           value={projections.active}
-          icon={<MdRepeat className="w-5 h-5" />}
           hint={`${items.length - projections.active} paused`}
         />
-      </div>
+      </StatStrip>
 
       {items.length === 0 ? (
         <EmptyState
           icon={<MdRepeat className="w-7 h-7" />}
           title="No recurring transactions"
-          description="Set up schedules for payments that happen on a regular basis."
+          description={
+            accounts.length === 0
+              ? 'Add an account on the Accounts page first; each schedule posts to an account.'
+              : 'Set up schedules for payments that happen on a regular basis. They post to the ledger automatically on each run date.'
+          }
           action={
-            perms.canCreate && (
-              <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+            perms.canCreate &&
+            accounts.length > 0 && (
+              <Button icon={<MdAdd className="w-4 h-4" />} onClick={openCreate}>
                 New Schedule
               </Button>
             )
           }
         />
       ) : (
-        <div className="bg-surface rounded-xl border border-border shadow-sm overflow-hidden">
+        <div className="panel overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-background border-b border-border">
+            <table className="ledger-table">
+              <thead>
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Description</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Frequency</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Next run</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary">Amount</th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Status</th>
-                  <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary">Actions</th>
+                  <th>Description</th>
+                  <th>Frequency</th>
+                  <th>Next run</th>
+                  <th className="text-right">Amount</th>
+                  <th>Status</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody>
                 {items.map((item) => (
-                  <tr key={item._id} className={`hover:bg-background/60 transition-colors ${item.isActive ? '' : 'opacity-60'}`}>
-                    <td className="px-6 py-4 text-sm">
+                  <tr key={item._id} className={`${item.isActive ? '' : 'opacity-60'}`}>
+                    <td>
                       <SafeText className="font-medium text-text-primary">{item.description}</SafeText>
-                      <p className="text-xs text-text-secondary mt-0.5">{categoryName(item.category)}</p>
+                      <p className="text-xs text-text-secondary mt-0.5">
+                        {categoryName(item.categoryId)} · {accountName(item.accountId)}
+                      </p>
+                      {item.lastError && (
+                        <p className="mt-1 flex items-center gap-1 text-xs text-danger-600">
+                          <MdErrorOutline className="w-3.5 h-3.5 shrink-0" />
+                          Last run failed: {item.lastError}
+                        </p>
+                      )}
                     </td>
-                    <td className="px-6 py-4 text-sm capitalize text-text-primary">{item.frequency}</td>
-                    <td className="px-6 py-4 text-sm text-text-secondary whitespace-nowrap">{fmt.date(item.nextDate)}</td>
-                    <td
-                      className={`px-6 py-4 text-sm font-semibold text-right whitespace-nowrap ${
-                        item.type === 'inflow' ? 'text-success-700' : 'text-text-primary'
-                      }`}
-                    >
-                      {item.type === 'inflow' ? '+' : '-'}
+                    <td className="capitalize text-text-primary">{item.frequency}</td>
+                    <td className="text-text-secondary whitespace-nowrap">{fmt.date(item.nextDate)}</td>
+                    <td className={`num ${item.type === 'income' ? 'text-success-700' : 'text-text-primary'}`}>
+                      {item.type === 'income' ? '+' : '-'}
                       {fmt.money(item.amount)}
                     </td>
-                    <td className="px-6 py-4">
+                    <td>
                       <Badge tone={item.isActive ? 'success' : 'neutral'}>{item.isActive ? 'Active' : 'Paused'}</Badge>
                     </td>
-                    <td className="px-6 py-4">
+                    <td>
                       <div className="flex justify-end gap-1">
                         {perms.canUpdate && (
                           <>
@@ -322,7 +331,7 @@ const RecurringTransactionManagement: FC = () => {
         <form id="recurring-form" onSubmit={handleSubmit} className="space-y-4">
           {formError && <ErrorBanner message={formError} />}
           <div className="grid grid-cols-2 gap-2">
-            {(['inflow', 'outflow'] as const).map((type) => (
+            {(['income', 'expense'] as const).map((type) => (
               <button
                 key={type}
                 type="button"
@@ -330,19 +339,19 @@ const RecurringTransactionManagement: FC = () => {
                   setForm({
                     ...form,
                     type,
-                    category: categoryOptions(type).includes(form.category) ? form.category : categoryOptions(type)[0] || '',
+                    categoryId: categoryOptions(type).some((c) => c._id === form.categoryId)
+                      ? form.categoryId
+                      : categoryOptions(type)[0]?._id || '',
                   })
                 }
-                className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                className={`flex items-center justify-center gap-2 h-9 px-3 rounded-md border text-sm font-medium transition-colors ${
                   form.type === type
-                    ? type === 'inflow'
-                      ? 'border-success-500 bg-success-50 text-success-700'
-                      : 'border-danger-500 bg-danger-50 text-danger-700'
-                    : 'border-border text-text-secondary hover:bg-background'
+                    ? 'border-primary-900 bg-primary-900 text-white'
+                    : 'border-border text-text-secondary hover:bg-secondary-50'
                 }`}
               >
-                {type === 'inflow' ? <MdArrowUpward className="w-4 h-4" /> : <MdArrowDownward className="w-4 h-4" />}
-                {type === 'inflow' ? 'Money in' : 'Money out'}
+                {type === 'income' ? <MdArrowUpward className="w-4 h-4" /> : <MdArrowDownward className="w-4 h-4" />}
+                {type === 'income' ? 'Money in' : 'Money out'}
               </button>
             ))}
           </div>
@@ -367,31 +376,39 @@ const RecurringTransactionManagement: FC = () => {
                 required
               />
             </Field>
-            <Field label="Category" htmlFor="rec-category" required>
-              {formCategories.length > 0 ? (
-                <Select
-                  id="rec-category"
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  required
-                >
-                  <option value="" disabled>
-                    Select a category
+            <Field label={form.type === 'income' ? 'Paid into' : 'Paid from'} htmlFor="rec-account" required>
+              <Select
+                id="rec-account"
+                value={form.accountId}
+                onChange={(e) => setForm({ ...form, accountId: e.target.value })}
+                required
+              >
+                <option value="" disabled>
+                  Select an account
+                </option>
+                {accountOptions(form.accountId).map((a) => (
+                  <option key={a._id} value={a._id}>
+                    {a.name}
                   </option>
-                  {formCategories.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </Select>
-              ) : (
-                <Input
-                  id="rec-category"
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  required
-                />
-              )}
+                ))}
+              </Select>
+            </Field>
+            <Field label="Category" htmlFor="rec-category" required>
+              <Select
+                id="rec-category"
+                value={form.categoryId}
+                onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+                required
+              >
+                <option value="" disabled>
+                  Select a category
+                </option>
+                {formCategories.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.name}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field label="Frequency" htmlFor="rec-frequency">
               <Select

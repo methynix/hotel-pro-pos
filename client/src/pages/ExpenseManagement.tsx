@@ -1,16 +1,5 @@
 import { FC, FormEvent, useMemo, useState } from 'react';
-import {
-  MdAdd,
-  MdCancel,
-  MdCheckCircle,
-  MdDelete,
-  MdEdit,
-  MdHourglassEmpty,
-  MdReceipt,
-  MdReceiptLong,
-  MdThumbDown,
-  MdThumbUp,
-} from 'react-icons/md';
+import { MdAdd, MdDelete, MdEdit, MdReceipt, MdThumbDown, MdThumbUp } from 'react-icons/md';
 import { expenseService } from '../services/expenseService';
 import { categoryService } from '../services/categoryService';
 import { Category, Expense } from '../types';
@@ -28,7 +17,7 @@ import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import EmptyState from '../components/ui/EmptyState';
 import ErrorBanner from '../components/ui/ErrorBanner';
-import StatCard from '../components/ui/StatCard';
+import StatCard, { StatStrip } from '../components/ui/StatCard';
 import SearchInput from '../components/ui/SearchInput';
 import Pagination from '../components/ui/Pagination';
 import ReadOnlyNotice from '../components/ui/ReadOnlyNotice';
@@ -48,7 +37,7 @@ const PAGE_SIZE = 15;
 const EMPTY_FORM = {
   description: '',
   amount: '',
-  category: '',
+  categoryId: '',
   notes: '',
   status: 'pending' as ExpenseStatus,
 };
@@ -66,7 +55,7 @@ const ExpenseManagement: FC = () => {
       ]);
       return { expenses, categories };
     },
-    { expenses: [] as Expense[], categories: [] as Category[] }
+    { expenses: [] as Expense[], categories: [] as Category[] },
   );
   const { expenses, categories } = data;
   const setExpenses = (update: (list: Expense[]) => Expense[]) =>
@@ -86,14 +75,11 @@ const ExpenseManagement: FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [reviewing, setReviewing] = useState<string | null>(null);
 
-  const expenseCategoryNames = useMemo(
-    () => categories.filter((c) => c.type === 'expense').map((c) => c.name),
-    [categories]
-  );
-  const allCategoryNames = useMemo(
-    () => Array.from(new Set([...expenseCategoryNames, ...expenses.map((e) => e.category)])).sort(),
-    [expenseCategoryNames, expenses]
-  );
+  const expenseCategories = useMemo(() => categories.filter((c) => c.type === 'expense'), [categories]);
+  const categoryName = useMemo(() => {
+    const names = new Map(categories.map((c) => [c._id, c.name]));
+    return (id: string) => names.get(id) ?? 'Uncategorized';
+  }, [categories]);
 
   const stats = useMemo(() => {
     const sumBy = (status: ExpenseStatus) =>
@@ -113,7 +99,7 @@ const ExpenseManagement: FC = () => {
       (e) =>
         (!term || e.description.toLowerCase().includes(term) || e.notes?.toLowerCase().includes(term)) &&
         (!statusFilter || e.status === statusFilter) &&
-        (!categoryFilter || e.category === categoryFilter)
+        (!categoryFilter || e.categoryId === categoryFilter),
     );
   }, [expenses, search, statusFilter, categoryFilter]);
 
@@ -123,7 +109,7 @@ const ExpenseManagement: FC = () => {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...EMPTY_FORM, category: expenseCategoryNames[0] || '' });
+    setForm({ ...EMPTY_FORM, categoryId: expenseCategories[0]?._id || '' });
     setFormError(null);
     setFormOpen(true);
   };
@@ -133,7 +119,7 @@ const ExpenseManagement: FC = () => {
     setForm({
       description: e.description,
       amount: String(e.amount),
-      category: e.category,
+      categoryId: e.categoryId,
       notes: e.notes || '',
       status: e.status,
     });
@@ -148,7 +134,7 @@ const ExpenseManagement: FC = () => {
       setFormError('Enter an amount greater than zero');
       return;
     }
-    if (!form.category.trim()) {
+    if (!form.categoryId) {
       setFormError('Choose a category');
       return;
     }
@@ -158,7 +144,7 @@ const ExpenseManagement: FC = () => {
     const payload: Partial<Expense> = {
       description: form.description.trim(),
       amount,
-      category: form.category.trim(),
+      categoryId: form.categoryId,
       notes: form.notes.trim(),
       ...(perms.canApprove ? { status: form.status } : {}),
     };
@@ -227,7 +213,7 @@ const ExpenseManagement: FC = () => {
         description="Record, review and approve business spending"
         actions={
           perms.canCreate && (
-            <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+            <Button icon={<MdAdd className="w-4 h-4" />} onClick={openCreate}>
               New Expense
             </Button>
           )
@@ -237,18 +223,17 @@ const ExpenseManagement: FC = () => {
       {perms.isReadOnly && <ReadOnlyNotice />}
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard label="Total Expenses" value={fmt.money(stats.total)} icon={<MdReceiptLong className="w-5 h-5" />} hint={`${expenses.length} records`} />
-        <StatCard label="Approved" value={fmt.money(stats.approved)} tone="success" icon={<MdCheckCircle className="w-5 h-5" />} />
+      <StatStrip>
+        <StatCard label="Total Expenses" value={fmt.money(stats.total)} hint={`${expenses.length} records`} />
+        <StatCard label="Approved" value={fmt.money(stats.approved)} tone="success" />
         <StatCard
           label="Awaiting Approval"
           value={fmt.money(stats.pending)}
           tone="warning"
-          icon={<MdHourglassEmpty className="w-5 h-5" />}
           hint={`${stats.pendingCount} pending`}
         />
-        <StatCard label="Rejected" value={fmt.money(stats.rejected)} tone="danger" icon={<MdCancel className="w-5 h-5" />} />
-      </div>
+        <StatCard label="Rejected" value={fmt.money(stats.rejected)} tone="danger" />
+      </StatStrip>
 
       <div className="flex flex-col md:flex-row gap-3">
         <SearchInput
@@ -284,9 +269,9 @@ const ExpenseManagement: FC = () => {
           aria-label="Filter by category"
         >
           <option value="">All categories</option>
-          {allCategoryNames.map((name) => (
-            <option key={name} value={name}>
-              {name}
+          {expenseCategories.map((c) => (
+            <option key={c._id} value={c._id}>
+              {c.name}
             </option>
           ))}
         </Select>
@@ -304,7 +289,7 @@ const ExpenseManagement: FC = () => {
           action={
             perms.canCreate &&
             expenses.length === 0 && (
-              <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+              <Button icon={<MdAdd className="w-4 h-4" />} onClick={openCreate}>
                 New Expense
               </Button>
             )
@@ -312,26 +297,24 @@ const ExpenseManagement: FC = () => {
         />
       ) : (
         <>
-          <div className="bg-surface rounded-xl border border-border shadow-sm overflow-hidden">
+          <div className="panel overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-background border-b border-border">
+              <table className="ledger-table">
+                <thead>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Description</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Category</th>
-                    <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary">Amount</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Status</th>
-                    {hasActions && (
-                      <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary">Actions</th>
-                    )}
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th className="text-right">Amount</th>
+                    <th>Status</th>
+                    {hasActions && <th className="text-right">Actions</th>}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody>
                   {pageItems.map((expense) => (
-                    <tr key={expense._id} className="hover:bg-background/60 transition-colors">
-                      <td className="px-6 py-4 text-sm text-text-secondary whitespace-nowrap">{fmt.date(expense.createdAt)}</td>
-                      <td className="px-6 py-4 text-sm text-text-primary">
+                    <tr key={expense._id}>
+                      <td className="text-text-secondary whitespace-nowrap">{fmt.date(expense.createdAt)}</td>
+                      <td className="text-text-primary">
                         <SafeText className="font-medium">{expense.description}</SafeText>
                         {expense.notes && (
                           <SafeText as="p" className="text-xs text-text-secondary mt-0.5 line-clamp-1">
@@ -339,15 +322,13 @@ const ExpenseManagement: FC = () => {
                           </SafeText>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm text-text-primary">{expense.category}</td>
-                      <td className="px-6 py-4 text-sm font-semibold text-text-primary text-right whitespace-nowrap">
-                        {fmt.money(expense.amount)}
-                      </td>
-                      <td className="px-6 py-4 text-sm">
+                      <td className="text-text-primary">{categoryName(expense.categoryId)}</td>
+                      <td className="num text-text-primary">{fmt.money(expense.amount)}</td>
+                      <td>
                         <Badge tone={STATUS_TONES[expense.status]}>{expense.status}</Badge>
                       </td>
                       {hasActions && (
-                        <td className="px-6 py-4">
+                        <td>
                           <div className="flex items-center justify-end gap-1">
                             {perms.canApprove && expense.status === 'pending' && (
                               <>
@@ -438,32 +419,23 @@ const ExpenseManagement: FC = () => {
               label="Category"
               htmlFor="exp-category"
               required
-              hint={expenseCategoryNames.length === 0 ? 'No expense categories yet, type one in' : undefined}
+              hint={expenseCategories.length === 0 ? 'Add an expense category on the Categories page first' : undefined}
             >
-              {expenseCategoryNames.length > 0 ? (
-                <Select
-                  id="exp-category"
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  required
-                >
-                  <option value="" disabled>
-                    Select a category
+              <Select
+                id="exp-category"
+                value={form.categoryId}
+                onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+                required
+              >
+                <option value="" disabled>
+                  Select a category
+                </option>
+                {expenseCategories.map((c) => (
+                  <option key={c._id} value={c._id}>
+                    {c.name}
                   </option>
-                  {Array.from(new Set([...expenseCategoryNames, form.category].filter(Boolean))).map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </Select>
-              ) : (
-                <Input
-                  id="exp-category"
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  required
-                />
-              )}
+                ))}
+              </Select>
             </Field>
           </div>
           {perms.canApprove && (
@@ -496,8 +468,8 @@ const ExpenseManagement: FC = () => {
         title="Delete expense"
         message={
           <>
-            Delete <strong className="text-text-primary">{toDelete?.description}</strong> (
-            {fmt.money(toDelete?.amount)})? This cannot be undone.
+            Delete <strong className="text-text-primary">{toDelete?.description}</strong> ({fmt.money(toDelete?.amount)}
+            )? This cannot be undone.
           </>
         }
         confirmLabel="Delete Expense"

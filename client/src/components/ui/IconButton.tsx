@@ -6,11 +6,12 @@ interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
 }
 
+// Row actions stay grey until hovered, so tables don't turn into a wall of colour.
 const TONES = {
-  accent: 'text-accent-600 hover:bg-accent-50',
-  danger: 'text-danger-600 hover:bg-danger-50',
-  success: 'text-success-600 hover:bg-success-50',
-  neutral: 'text-text-secondary hover:bg-background hover:text-text-primary',
+  accent: 'hover:text-text-primary',
+  danger: 'hover:text-danger-600',
+  success: 'hover:text-accent-700',
+  neutral: 'hover:text-text-primary',
 };
 
 const IconButton: FC<IconButtonProps> = ({ label, tone = 'neutral', children, className = '', ...rest }) => (
@@ -18,7 +19,7 @@ const IconButton: FC<IconButtonProps> = ({ label, tone = 'neutral', children, cl
     type="button"
     title={label}
     aria-label={label}
-    className={`p-2 rounded-lg transition-colors disabled:opacity-40 ${TONES[tone]} ${className}`}
+    className={`p-1.5 rounded-md text-secondary-500 hover:bg-secondary-100 transition-colors disabled:opacity-30 disabled:hover:bg-transparent ${TONES[tone]} ${className}`}
     {...rest}
   >
     {children}

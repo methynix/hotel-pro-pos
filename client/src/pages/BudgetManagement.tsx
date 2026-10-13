@@ -1,5 +1,5 @@
 import { FC, FormEvent, useMemo, useState } from 'react';
-import { MdAdd, MdDelete, MdEdit, MdErrorOutline, MdPieChart, MdWarningAmber } from 'react-icons/md';
+import { MdAdd, MdDelete, MdEdit } from 'react-icons/md';
 import { budgetService } from '../services/budgetService';
 import { categoryService } from '../services/categoryService';
 import { Budget, Category } from '../types';
@@ -8,7 +8,6 @@ import { usePermissions } from '../hooks/usePermissions';
 import { useToast } from '../hooks/useToast';
 import { useFormatters } from '../hooks/useFormatters';
 import { errorMessage } from '../utils/format';
-import { getCategoryIcon } from '../utils/categoryIcons';
 import PageHeader from '../components/ui/PageHeader';
 import Button from '../components/ui/Button';
 import IconButton from '../components/ui/IconButton';
@@ -18,7 +17,7 @@ import EmptyState from '../components/ui/EmptyState';
 import ErrorBanner from '../components/ui/ErrorBanner';
 import ReadOnlyNotice from '../components/ui/ReadOnlyNotice';
 import { Field, Input, Select } from '../components/ui/FormField';
-import { SkeletonCards, SkeletonHeader } from '../components/ui/Skeleton';
+import { SkeletonHeader, SkeletonTable } from '../components/ui/Skeleton';
 
 type BudgetWithStatus = Omit<Budget, 'categoryId'> & {
   // The API populates the category; older records may still be a bare id.
@@ -33,7 +32,7 @@ const EMPTY_FORM = { categoryId: '', amount: '', period: 'monthly' as Period, al
 
 const categoryIdOf = (b: BudgetWithStatus) => (typeof b.categoryId === 'string' ? b.categoryId : b.categoryId?._id);
 
-const progressColor = (pct: number) => (pct >= 100 ? 'bg-danger-500' : pct >= 80 ? 'bg-warning-500' : 'bg-success-500');
+const progressColor = (pct: number) => (pct >= 100 ? 'bg-danger-500' : pct >= 80 ? 'bg-warning-400' : 'bg-accent-600');
 
 const BudgetManagement: FC = () => {
   const perms = usePermissions();
@@ -53,7 +52,7 @@ const BudgetManagement: FC = () => {
       budgets: [] as BudgetWithStatus[],
       alerts: [] as Awaited<ReturnType<typeof budgetService.getAlerts>>,
       categories: [] as Category[],
-    }
+    },
   );
   const { budgets, alerts, categories } = data;
 
@@ -135,7 +134,7 @@ const BudgetManagement: FC = () => {
     return (
       <div className="space-y-6">
         <SkeletonHeader withAction={perms.canCreate} />
-        <SkeletonCards count={6} />
+        <SkeletonTable rows={5} columns={6} />
       </div>
     );
   }
@@ -147,7 +146,7 @@ const BudgetManagement: FC = () => {
         description="Set spending limits by category and get alerted before you overspend"
         actions={
           perms.canCreate && (
-            <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+            <Button icon={<MdAdd className="w-4 h-4" />} onClick={openCreate}>
               New Budget
             </Button>
           )
@@ -158,29 +157,22 @@ const BudgetManagement: FC = () => {
       {error && <ErrorBanner message={error} onRetry={reload} />}
 
       {alerts.length > 0 && (
-        <div className="bg-warning-50 border border-warning-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <MdWarningAmber className="w-5 h-5 text-warning-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h3 className="font-semibold text-warning-900 mb-2">Budget alerts</h3>
-              <ul className="space-y-1">
-                {alerts.map((alert) => (
-                  <li
-                    key={alert.budgetId}
-                    className={`text-sm ${alert.severity === 'critical' ? 'text-danger-700' : 'text-warning-800'}`}
-                  >
-                    <strong>{alert.category}:</strong> {alert.message}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
+        <div className="border-l-2 border-warning-400 bg-warning-50 px-4 py-3">
+          <p className="text-sm font-medium text-warning-900">
+            {alerts.length} {alerts.length === 1 ? 'budget is' : 'budgets are'} over the alert threshold
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {alerts.map((alert) => (
+              <li key={alert.budgetId} className="text-sm text-warning-800">
+                {alert.category}: {alert.message}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
       {budgets.length === 0 ? (
         <EmptyState
-          icon={<MdPieChart className="w-7 h-7" />}
           title="No budgets yet"
           description={
             expenseCategories.length === 0
@@ -190,79 +182,92 @@ const BudgetManagement: FC = () => {
           action={
             perms.canCreate &&
             expenseCategories.length > 0 && (
-              <Button icon={<MdAdd className="w-5 h-5" />} onClick={openCreate}>
+              <Button icon={<MdAdd className="w-4 h-4" />} onClick={openCreate}>
                 New Budget
               </Button>
             )
           }
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {budgets.map((budget) => {
-            const category = categoryFor(budget);
-            const Icon = getCategoryIcon(category?.icon);
-            const pct = budget.percentageUsed || 0;
-            const spent = budget.currentSpending || 0;
-            return (
-              <div key={budget._id} className="bg-surface rounded-xl border border-border shadow-sm p-6">
-                <div className="flex items-start justify-between gap-3 mb-5">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: `${category?.color || '#7E54FF'}1A`, color: category?.color || '#7E54FF' }}
-                    >
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-text-primary truncate">{category?.name || 'Unknown category'}</h3>
-                      <p className="text-xs text-text-secondary capitalize">{budget.period}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    {perms.canUpdate && (
-                      <IconButton label="Edit budget" tone="accent" onClick={() => openEdit(budget)}>
-                        <MdEdit className="w-4 h-4" />
-                      </IconButton>
-                    )}
-                    {perms.canDelete && (
-                      <IconButton label="Delete budget" tone="danger" onClick={() => setToDelete(budget)}>
-                        <MdDelete className="w-4 h-4" />
-                      </IconButton>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-baseline mb-2">
-                  <span className="text-sm text-text-secondary">
-                    <span className="font-semibold text-text-primary">{fmt.money(spent)}</span> of {fmt.money(budget.amount)}
-                  </span>
-                  <span className={`text-sm font-bold ${budget.isAlertTriggered ? 'text-danger-600' : 'text-success-600'}`}>
-                    {pct.toFixed(0)}%
-                  </span>
-                </div>
-                <div className="w-full bg-background rounded-full h-2.5">
-                  <div
-                    className={`h-2.5 rounded-full transition-all ${progressColor(pct)}`}
-                    style={{ width: `${Math.min(pct, 100)}%` }}
-                  />
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-border flex items-center justify-between text-xs">
-                  <span className="text-text-secondary">
-                    Remaining {fmt.money(Math.max(0, budget.amount - spent))}
-                  </span>
-                  {budget.isAlertTriggered ? (
-                    <span className="inline-flex items-center gap-1 font-semibold text-warning-700">
-                      <MdErrorOutline className="w-4 h-4" />
-                      Alert at {budget.alertThreshold}%
-                    </span>
-                  ) : (
-                    <span className="text-text-secondary">Alert at {budget.alertThreshold}%</span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div className="panel overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="ledger-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Period</th>
+                  <th className="w-[32%]">Used</th>
+                  <th className="text-right">Spent</th>
+                  <th className="text-right">Budget</th>
+                  <th className="text-right">Remaining</th>
+                  {(perms.canUpdate || perms.canDelete) && <th className="w-20" />}
+                </tr>
+              </thead>
+              <tbody>
+                {budgets.map((budget) => {
+                  const category = categoryFor(budget);
+                  const pct = budget.percentageUsed || 0;
+                  const spent = budget.currentSpending || 0;
+                  const remaining = budget.amount - spent;
+                  return (
+                    <tr key={budget._id}>
+                      <td>
+                        <span className="inline-flex items-center gap-2.5">
+                          <span
+                            className="w-1 h-5 rounded-full"
+                            style={{ backgroundColor: category?.color || '#A6A399' }}
+                          />
+                          <span className="font-medium text-text-primary">{category?.name || 'Unknown category'}</span>
+                        </span>
+                      </td>
+                      <td className="capitalize text-text-secondary">{budget.period}</td>
+                      <td>
+                        <div className="flex items-center gap-3">
+                          <div className="relative flex-1 h-1.5 bg-secondary-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${progressColor(pct)}`}
+                              style={{ width: `${Math.min(pct, 100)}%` }}
+                            />
+                            <div
+                              className="absolute top-0 bottom-0 w-px bg-primary-900/40"
+                              style={{ left: `${Math.min(budget.alertThreshold, 100)}%` }}
+                              title={`Alert at ${budget.alertThreshold}%`}
+                            />
+                          </div>
+                          <span
+                            className={`w-11 text-right font-mono tabular text-xs ${
+                              budget.isAlertTriggered ? 'text-danger-600' : 'text-text-secondary'
+                            }`}
+                          >
+                            {pct.toFixed(0)}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="num">{fmt.money(spent)}</td>
+                      <td className="num text-text-secondary">{fmt.money(budget.amount)}</td>
+                      <td className={`num ${remaining < 0 ? 'text-danger-600' : ''}`}>{fmt.money(remaining)}</td>
+                      {(perms.canUpdate || perms.canDelete) && (
+                        <td>
+                          <div className="flex justify-end gap-0.5">
+                            {perms.canUpdate && (
+                              <IconButton label="Edit budget" onClick={() => openEdit(budget)}>
+                                <MdEdit className="w-4 h-4" />
+                              </IconButton>
+                            )}
+                            {perms.canDelete && (
+                              <IconButton label="Delete budget" tone="danger" onClick={() => setToDelete(budget)}>
+                                <MdDelete className="w-4 h-4" />
+                              </IconButton>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -325,7 +330,11 @@ const BudgetManagement: FC = () => {
               </Select>
             </Field>
           </div>
-          <Field label="Alert threshold (%)" htmlFor="budget-threshold" hint="Show an alert once this share of the budget is spent">
+          <Field
+            label="Alert threshold (%)"
+            htmlFor="budget-threshold"
+            hint="Show an alert once this share of the budget is spent"
+          >
             <Input
               id="budget-threshold"
               type="number"
@@ -344,7 +353,10 @@ const BudgetManagement: FC = () => {
         message={
           <>
             Delete the {toDelete?.period} budget for{' '}
-            <strong className="text-text-primary">{toDelete ? categoryFor(toDelete)?.name || 'this category' : ''}</strong>?
+            <strong className="text-text-primary">
+              {toDelete ? categoryFor(toDelete)?.name || 'this category' : ''}
+            </strong>
+            ?
           </>
         }
         confirmLabel="Delete Budget"

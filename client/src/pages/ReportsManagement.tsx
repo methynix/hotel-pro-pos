@@ -2,7 +2,6 @@ import { FC, useState } from 'react';
 import { IconType } from 'react-icons';
 import {
   MdAccountBalance,
-  MdArrowForward,
   MdAssessment,
   MdBarChart,
   MdDelete,
@@ -37,7 +36,6 @@ interface ReportOption {
   title: string;
   description: string;
   icon: IconType;
-  tone: string;
   usesPeriod: boolean;
 }
 
@@ -47,7 +45,6 @@ const REPORT_OPTIONS: ReportOption[] = [
     title: 'Income Statement',
     description: 'Revenue, expenses and net income',
     icon: MdBarChart,
-    tone: 'bg-success-50 text-success-600',
     usesPeriod: true,
   },
   {
@@ -55,7 +52,6 @@ const REPORT_OPTIONS: ReportOption[] = [
     title: 'Cash Flow Statement',
     description: 'Completed and pending cash movements',
     icon: MdSwapVert,
-    tone: 'bg-info-50 text-info-600',
     usesPeriod: true,
   },
   {
@@ -63,7 +59,6 @@ const REPORT_OPTIONS: ReportOption[] = [
     title: 'Balance Sheet',
     description: 'Assets, liabilities and equity today',
     icon: MdAccountBalance,
-    tone: 'bg-accent-50 text-accent-600',
     usesPeriod: false,
   },
   {
@@ -71,7 +66,6 @@ const REPORT_OPTIONS: ReportOption[] = [
     title: 'Tax Summary',
     description: 'Income and expenses by category',
     icon: MdReceiptLong,
-    tone: 'bg-warning-50 text-warning-600',
     usesPeriod: true,
   },
   {
@@ -79,7 +73,6 @@ const REPORT_OPTIONS: ReportOption[] = [
     title: 'Comprehensive Report',
     description: 'Every statement in one document',
     icon: MdAssessment,
-    tone: 'bg-primary-50 text-primary-700',
     usesPeriod: true,
   },
 ];
@@ -203,18 +196,18 @@ const ReportsManagement: FC = () => {
     start && end ? `${fmt.date(start)} to ${fmt.date(end)}` : 'As of generation date';
 
   const renderDocument = (report: ShownReport) => (
-    <div id="printable-report" className="bg-surface rounded-xl border border-border shadow-sm">
+    <div id="printable-report" className="panel">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 p-6 border-b border-border">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-accent-600">ledgerHQ</p>
-          <h2 className="text-2xl font-bold text-text-primary mt-1">{REPORT_TITLES[report.type] || 'Report'}</h2>
+          <p className="text-xs font-medium text-text-secondary">ledgerHQ</p>
+          <h2 className="text-xl font-semibold text-text-primary mt-1">{REPORT_TITLES[report.type] || 'Report'}</h2>
           <p className="text-sm text-text-secondary mt-1">
             {periodLabel(report.startDate, report.endDate)} · Generated {fmt.date(report.generatedAt)}
           </p>
         </div>
         <Button
           variant="secondary"
-          icon={<MdPrint className="w-5 h-5" />}
+          icon={<MdPrint className="w-4 h-4" />}
           onClick={() => window.print()}
           className="print:hidden"
         >
@@ -229,7 +222,10 @@ const ReportsManagement: FC = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Financial Reports" description="Generate statements, review history and export to PDF" />
+      <PageHeader
+        title="Reports"
+        description="Generate financial statements for any period. Every report is saved to History."
+      />
 
       <div className="flex gap-1 border-b border-border" role="tablist">
         {(
@@ -243,18 +239,16 @@ const ReportsManagement: FC = () => {
             role="tab"
             aria-selected={tab === id}
             onClick={() => setTab(id)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`flex items-center gap-2 px-1 mr-5 py-2.5 text-sm border-b-2 -mb-px transition-colors ${
               tab === id
-                ? 'border-accent-600 text-accent-600'
+                ? 'border-primary-900 text-text-primary font-medium'
                 : 'border-transparent text-text-secondary hover:text-text-primary'
             }`}
           >
             <Icon className="w-4 h-4" />
             {label}
             {id === 'history' && history.data.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-background text-xs text-text-secondary">
-                {history.data.length}
-              </span>
+              <span className="font-mono text-xs text-text-secondary">{history.data.length}</span>
             )}
           </button>
         ))}
@@ -262,7 +256,7 @@ const ReportsManagement: FC = () => {
 
       {tab === 'generate' && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-xl border border-border shadow-sm p-6">
+          <div className="panel p-6">
             <div className="flex flex-col lg:flex-row lg:items-end gap-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
                 <Field label="Start date" htmlFor="report-start">
@@ -284,7 +278,7 @@ const ReportsManagement: FC = () => {
                   />
                 </Field>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="inline-flex flex-wrap p-0.5 bg-secondary-100 rounded-md self-start lg:self-auto">
                 {PRESETS.map((preset) => {
                   const [s, e] = preset.range();
                   const active = range.startDate === toInputDate(s) && range.endDate === toInputDate(e);
@@ -292,10 +286,10 @@ const ReportsManagement: FC = () => {
                     <button
                       key={preset.label}
                       onClick={() => setRange({ startDate: toInputDate(s), endDate: toInputDate(e) })}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      className={`px-3 h-8 rounded text-sm border transition-colors ${
                         active
-                          ? 'bg-accent-50 border-accent-300 text-accent-700'
-                          : 'border-border text-text-secondary hover:bg-background'
+                          ? 'bg-surface border-border text-text-primary font-medium'
+                          : 'border-transparent text-text-secondary hover:text-text-primary'
                       }`}
                     >
                       {preset.label}
@@ -304,45 +298,43 @@ const ReportsManagement: FC = () => {
                 })}
               </div>
             </div>
-            {rangeInvalid && <p className="mt-3 text-xs text-danger-600">The start date must be on or before the end date.</p>}
+            {rangeInvalid && (
+              <p className="mt-3 text-xs text-danger-600">The start date must be on or before the end date.</p>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {REPORT_OPTIONS.map((option) => {
-              const Icon = option.icon;
-              const busy = generating === option.id;
-              return (
-                <button
-                  key={option.id}
-                  onClick={() => generate(option)}
-                  disabled={!!generating}
-                  className="group bg-surface border border-border rounded-xl p-6 text-left hover:shadow-md hover:border-accent-300 transition-all disabled:opacity-60 disabled:cursor-wait"
-                >
-                  <div className={`w-11 h-11 rounded-lg flex items-center justify-center mb-4 ${option.tone}`}>
-                    <Icon className="w-6 h-6" />
-                  </div>
-                  <h3 className="font-semibold text-text-primary">{option.title}</h3>
-                  <p className="text-sm text-text-secondary mt-1">{option.description}</p>
-                  <div className="mt-4 flex items-center gap-2 text-accent-600 text-sm font-medium">
-                    {busy ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                        Generating
-                      </>
-                    ) : (
-                      <>
-                        Generate
-                        <MdArrowForward className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                      </>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+          <div className="panel overflow-hidden">
+            <ul className="divide-y divide-border">
+              {REPORT_OPTIONS.map((option) => {
+                const Icon = option.icon;
+                const busy = generating === option.id;
+                return (
+                  <li key={option.id} className="flex items-center gap-4 px-4 py-3.5">
+                    <Icon className="w-5 h-5 text-secondary-500 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-primary">{option.title}</p>
+                      <p className="text-xs text-text-secondary">
+                        {option.description}
+                        {!option.usesPeriod && ' (ignores the period)'}
+                      </p>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={busy}
+                      disabled={!!generating && !busy}
+                      onClick={() => generate(option)}
+                    >
+                      {busy ? 'Generating' : 'Generate'}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
 
           {generating ? (
-            <div className="bg-surface rounded-xl border border-border shadow-sm p-6 space-y-6" role="status" aria-label="Generating report">
+            <div className="panel p-6 space-y-6" role="status" aria-label="Generating report">
               <div className="space-y-2">
                 <Skeleton className="h-3 w-20" />
                 <Skeleton className="h-7 w-64" />
@@ -384,38 +376,40 @@ const ReportsManagement: FC = () => {
               }
             />
           ) : (
-            <div className="bg-surface rounded-xl border border-border shadow-sm overflow-hidden">
+            <div className="panel overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-background border-b border-border">
+                <table className="ledger-table">
+                  <thead>
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Report</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Period</th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-text-secondary">Generated</th>
-                      <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-text-secondary">Actions</th>
+                      <th>Report</th>
+                      <th>Period</th>
+                      <th>Generated</th>
+                      <th className="text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border">
+                  <tbody>
                     {history.data.map((report) => {
                       const option = REPORT_OPTIONS.find((o) => o.id === report.type);
                       const Icon = option?.icon || MdDescription;
                       return (
-                        <tr key={report._id} className="hover:bg-background/60 transition-colors">
-                          <td className="px-6 py-4">
+                        <tr key={report._id}>
+                          <td>
                             <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${option?.tone || 'bg-background'}`}>
-                                <Icon className="w-5 h-5" />
-                              </div>
-                              <span className="text-sm font-medium text-text-primary">
+                              <Icon className="w-4 h-4 text-secondary-500" />
+                              <span className="font-medium text-text-primary">
                                 {REPORT_TITLES[report.type] || report.title}
                               </span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-sm text-text-secondary whitespace-nowrap">
-                            {option?.usesPeriod ? periodLabel(report.startDate, report.endDate) : <Badge>Point in time</Badge>}
+                          <td className="text-text-secondary whitespace-nowrap">
+                            {option?.usesPeriod ? (
+                              periodLabel(report.startDate, report.endDate)
+                            ) : (
+                              <Badge>Point in time</Badge>
+                            )}
                           </td>
-                          <td className="px-6 py-4 text-sm text-text-secondary whitespace-nowrap">{fmt.date(report.createdAt)}</td>
-                          <td className="px-6 py-4">
+                          <td className="text-text-secondary whitespace-nowrap">{fmt.date(report.createdAt)}</td>
+                          <td>
                             <div className="flex justify-end gap-1">
                               <IconButton label="View report" tone="accent" onClick={() => setViewing(report)}>
                                 <MdVisibility className="w-4 h-4" />

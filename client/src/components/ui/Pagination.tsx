@@ -13,7 +13,7 @@ const Pagination: FC<PaginationProps> = ({ page, pages, total, onChange }) => {
   if (pages <= 1) return null;
   return (
     <div className="flex items-center justify-between gap-4">
-      <p className="text-sm text-text-secondary">
+      <p className="text-sm text-text-secondary tabular">
         Page {page} of {pages}
         {total !== undefined && <span className="hidden sm:inline"> ({total} total)</span>}
       </p>

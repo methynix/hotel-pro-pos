@@ -1,5 +1,4 @@
 import { FC, ReactNode } from 'react';
-import { MdWarningAmber } from 'react-icons/md';
 import Modal from './Modal';
 import Button from './Button';
 
@@ -30,15 +29,6 @@ const ConfirmDialog: FC<ConfirmDialogProps> = ({
     title={title}
     size="sm"
     dismissible={!loading}
-    icon={
-      <div
-        className={`w-10 h-10 rounded-full flex items-center justify-center ${
-          tone === 'danger' ? 'bg-danger-100 text-danger-600' : 'bg-accent-100 text-accent-600'
-        }`}
-      >
-        <MdWarningAmber className="w-5 h-5" />
-      </div>
-    }
     footer={
       <>
         <Button variant="secondary" onClick={onCancel} disabled={loading} data-autofocus>

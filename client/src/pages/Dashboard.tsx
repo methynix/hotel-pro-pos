@@ -1,65 +1,47 @@
-import { FC, useEffect, useState } from 'react';
+import { FC, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  MdTrendingUp,
-  MdTrendingDown,
-  MdAccountBalance,
-  MdPending,
-  MdArrowUpward,
-  MdArrowDownward,
-  MdAdd,
-  MdReceipt,
-  MdBarChart,
-  MdAccountBalanceWallet,
-} from 'react-icons/md';
+import { MdAdd, MdArrowForward } from 'react-icons/md';
 import { analyticsService, DashboardMetrics, CategorySpending, DailyTrend } from '../services/analyticsService';
+import { useAuth } from '../hooks/useAuth';
 import { useFormatters } from '../hooks/useFormatters';
 import { usePermissions } from '../hooks/usePermissions';
 import { errorMessage } from '../utils/format';
 import ErrorBanner from '../components/ui/ErrorBanner';
+import StatCard, { StatStrip } from '../components/ui/StatCard';
 import { Skeleton, SkeletonHeader, SkeletonStatCards } from '../components/ui/Skeleton';
 
-interface MetricCard {
-  title: string;
-  value: string;
-  change: string;
-  isPositive: boolean;
-  icon: FC<{ className?: string }>;
-  colorClass: string;
-}
+type Timeframe = 'month' | 'quarter' | 'year';
+
+const TIMEFRAMES: { id: Timeframe; label: string; previous: string }[] = [
+  { id: 'month', label: 'Month', previous: 'last month' },
+  { id: 'quarter', label: 'Quarter', previous: 'last quarter' },
+  { id: 'year', label: 'Year', previous: 'last year' },
+];
+
+const greeting = () => {
+  const h = new Date().getHours();
+  return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+};
 
 const DashboardSkeleton: FC = () => (
-  <div className="space-y-8" role="status" aria-label="Loading dashboard">
+  <div className="space-y-8" role="status" aria-label="Loading overview">
     <SkeletonHeader />
     <SkeletonStatCards />
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div className="lg:col-span-2 bg-surface rounded-xl border border-border shadow-sm p-6 space-y-6">
-        <Skeleton className="h-5 w-48" />
+    <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+      <div className="xl:col-span-3 panel p-5">
+        <Skeleton className="h-4 w-40 mb-6" />
+        <div className="flex items-end gap-1.5 h-48">
+          {Array.from({ length: 30 }).map((_, i) => (
+            <Skeleton key={i} className="flex-1" style={{ height: `${20 + ((i * 37) % 75)}%` }} />
+          ))}
+        </div>
+      </div>
+      <div className="xl:col-span-2 panel p-5 space-y-4">
+        <Skeleton className="h-4 w-36 mb-2" />
         {[0, 1, 2, 3, 4].map((i) => (
-          <div key={i} className="space-y-2">
-            <div className="flex justify-between">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-4 w-20" />
-            </div>
-            <Skeleton className="h-2 w-full" />
-          </div>
-        ))}
-      </div>
-      <div className="bg-surface rounded-xl border border-border shadow-sm p-6 space-y-3">
-        <Skeleton className="h-5 w-32 mb-3" />
-        {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-11 w-full" />
-        ))}
-        <Skeleton className="h-16 w-full mt-6" />
-        <Skeleton className="h-16 w-full" />
-      </div>
-    </div>
-    <div className="bg-surface rounded-xl border border-border shadow-sm p-8">
-      <Skeleton className="h-5 w-48 mb-6" />
-      <div className="flex items-end gap-3 h-48">
-        {Array.from({ length: 20 }).map((_, i) => (
-          <div key={i} className="flex-1" style={{ height: `${30 + ((i * 37) % 70)}%` }}>
-            <Skeleton className="h-full w-full" />
+          <div key={i} className="flex justify-between">
+            <Skeleton className="h-3.5 w-28" />
+            <Skeleton className="h-3.5 w-20" />
           </div>
         ))}
       </div>
@@ -67,7 +49,64 @@ const DashboardSkeleton: FC = () => (
   </div>
 );
 
+/** Paired daily bars: inflow in ledger green, outflow in ink grey. */
+const CashFlowChart: FC<{ data: DailyTrend[]; money: (n: number) => string }> = ({ data, money }) => {
+  const max = Math.max(...data.flatMap((d) => [d.inflow, d.outflow]), 0) || 1;
+  const totals = data.reduce((acc, d) => ({ inflow: acc.inflow + d.inflow, outflow: acc.outflow + d.outflow }), {
+    inflow: 0,
+    outflow: 0,
+  });
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mb-5 text-sm">
+        <span className="flex items-center gap-2 text-text-secondary">
+          <span className="w-2.5 h-2.5 rounded-sm bg-accent-600" />
+          In <span className="font-mono tabular text-text-primary">{money(totals.inflow)}</span>
+        </span>
+        <span className="flex items-center gap-2 text-text-secondary">
+          <span className="w-2.5 h-2.5 rounded-sm bg-secondary-400" />
+          Out <span className="font-mono tabular text-text-primary">{money(totals.outflow)}</span>
+        </span>
+      </div>
+      <div className="relative h-48">
+        {[0.25, 0.5, 0.75].map((f) => (
+          <div
+            key={f}
+            className="absolute inset-x-0 border-t border-dashed border-border"
+            style={{ bottom: `${f * 100}%` }}
+          />
+        ))}
+        <div className="absolute inset-0 flex items-end gap-[3px] border-b border-secondary-300">
+          {data.map((day) => (
+            <div
+              key={day.date}
+              className="group relative flex-1 h-full flex items-end justify-center gap-px"
+              title={`${day.date}\nIn: ${money(day.inflow)}\nOut: ${money(day.outflow)}`}
+            >
+              <div
+                className="w-1/2 max-w-[10px] bg-accent-600 group-hover:bg-accent-700 rounded-t-[1px]"
+                style={{ height: `${(day.inflow / max) * 100}%` }}
+              />
+              <div
+                className="w-1/2 max-w-[10px] bg-secondary-400 group-hover:bg-secondary-500 rounded-t-[1px]"
+                style={{ height: `${(day.outflow / max) * 100}%` }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex justify-between mt-2 text-xs text-text-secondary font-mono tabular">
+        <span>{data[0]?.date.slice(5)}</span>
+        <span>{data[Math.floor(data.length / 2)]?.date.slice(5)}</span>
+        <span>{data[data.length - 1]?.date.slice(5)}</span>
+      </div>
+    </div>
+  );
+};
+
 const Dashboard: FC = () => {
+  const { user } = useAuth();
   const fmt = useFormatters();
   const perms = usePermissions();
   const [loading, setLoading] = useState(true);
@@ -76,7 +115,7 @@ const Dashboard: FC = () => {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [topCategories, setTopCategories] = useState<CategorySpending[]>([]);
   const [cashFlow, setCashFlow] = useState<DailyTrend[]>([]);
-  const [timeframe, setTimeframe] = useState<'month' | 'quarter' | 'year'>('month');
+  const [timeframe, setTimeframe] = useState<Timeframe>('month');
 
   useEffect(() => {
     const loadDashboardData = async () => {
@@ -97,6 +136,8 @@ const Dashboard: FC = () => {
     loadDashboardData();
   }, [timeframe, reloadKey]);
 
+  const hasCashFlow = useMemo(() => cashFlow.some((d) => d.inflow > 0 || d.outflow > 0), [cashFlow]);
+
   if (loading) return <DashboardSkeleton />;
 
   if (!metrics) {
@@ -105,234 +146,143 @@ const Dashboard: FC = () => {
     );
   }
 
-  const metricCards: MetricCard[] = [
-    {
-      title: 'Total Inflows',
-      value: fmt.money(metrics.totalInflows),
-      change: `${metrics.inflowsChange >= 0 ? '+' : ''}${metrics.inflowsChange.toFixed(1)}%`,
-      isPositive: metrics.inflowsChange >= 0,
-      icon: MdTrendingUp,
-      colorClass: 'bg-success-50 text-success-600',
-    },
-    {
-      title: 'Total Expenses',
-      value: fmt.money(metrics.totalExpenses),
-      change: `${metrics.expensesChange >= 0 ? '+' : ''}${metrics.expensesChange.toFixed(1)}%`,
-      isPositive: metrics.expensesChange <= 0,
-      icon: MdTrendingDown,
-      colorClass: 'bg-danger-50 text-danger-600',
-    },
-    {
-      title: 'Net Cash Flow',
-      value: fmt.money(metrics.netCashFlow),
-      change: metrics.netCashFlow >= 0 ? 'Positive' : 'Negative',
-      isPositive: metrics.netCashFlow >= 0,
-      icon: MdAccountBalance,
-      colorClass: 'bg-accent-50 text-accent-600',
-    },
-    {
-      title: 'Pending Actions',
-      value: metrics.pendingCount.toString(),
-      change: `${metrics.transactionCount} total transactions`,
-      isPositive: true,
-      icon: MdPending,
-      colorClass: 'bg-warning-50 text-warning-600',
-    },
-  ];
-
-  const maxAmount = Math.max(...cashFlow.flatMap((d) => [d.inflow, d.outflow]), 0) || 1;
+  const previous = TIMEFRAMES.find((t) => t.id === timeframe)?.previous;
+  const change = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(1)}% vs ${previous}`;
+  const firstName = user?.name?.split(' ')[0];
 
   return (
     <div className="space-y-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 pb-5 border-b border-border">
         <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-text-primary mb-2">Dashboard</h1>
-          <p className="text-text-secondary">Welcome to ledgerHQ, your financial intelligence hub</p>
+          <h1 className="text-2xl font-semibold text-text-primary">
+            {greeting()}
+            {firstName ? `, ${firstName}` : ''}
+          </h1>
+          <p className="mt-1 text-sm text-text-secondary">
+            {metrics.pendingCount > 0 ? (
+              <>
+                {metrics.pendingCount} pending {metrics.pendingCount === 1 ? 'item needs' : 'items need'} attention.{' '}
+                <Link
+                  to="/app/transactions"
+                  className="text-text-primary underline underline-offset-4 decoration-border hover:decoration-text-primary"
+                >
+                  Review
+                </Link>
+              </>
+            ) : (
+              'Nothing is waiting on you.'
+            )}
+          </p>
         </div>
-        <div className="flex gap-2">
-          {(['month', 'quarter', 'year'] as const).map((tf) => (
-            <button
-              key={tf}
-              onClick={() => setTimeframe(tf)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                timeframe === tf
-                  ? 'bg-accent-600 text-white'
-                  : 'bg-surface border border-border text-text-primary hover:border-accent-600'
-              }`}
+        <div className="flex items-center gap-2">
+          <div className="inline-flex p-0.5 bg-secondary-100 rounded-md" role="tablist" aria-label="Timeframe">
+            {TIMEFRAMES.map((tf) => (
+              <button
+                key={tf.id}
+                role="tab"
+                aria-selected={timeframe === tf.id}
+                onClick={() => setTimeframe(tf.id)}
+                className={`px-3 h-8 rounded text-sm transition-colors ${
+                  timeframe === tf.id
+                    ? 'bg-surface text-text-primary font-medium border border-border'
+                    : 'text-text-secondary hover:text-text-primary border border-transparent'
+                }`}
+              >
+                {tf.label}
+              </button>
+            ))}
+          </div>
+          {perms.canCreate && (
+            <Link
+              to="/app/transactions"
+              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-md bg-primary-900 text-white text-sm font-medium hover:bg-primary-700"
             >
-              {tf.charAt(0).toUpperCase() + tf.slice(1)}
-            </button>
-          ))}
+              <MdAdd className="w-4 h-4" />
+              Record
+            </Link>
+          )}
         </div>
       </div>
 
       {error && <ErrorBanner message={error} onRetry={() => setReloadKey((k) => k + 1)} />}
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {metricCards.map((metric) => {
-          const Icon = metric.icon;
-          return (
-            <div
-              key={metric.title}
-              className="bg-surface rounded-xl border border-border shadow-sm hover:shadow-md transition-shadow p-6"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold text-text-secondary">{metric.title}</h3>
-                <div className={`p-2 rounded-lg ${metric.colorClass}`}>
-                  <Icon className="w-5 h-5" />
-                </div>
-              </div>
+      <StatStrip>
+        <StatCard label="Money in" value={fmt.money(metrics.totalInflows)} hint={change(metrics.inflowsChange)} />
+        <StatCard label="Money out" value={fmt.money(metrics.totalExpenses)} hint={change(metrics.expensesChange)} />
+        <StatCard
+          label="Net cash flow"
+          value={fmt.money(metrics.netCashFlow)}
+          tone={metrics.netCashFlow >= 0 ? 'success' : 'danger'}
+          hint={`${metrics.transactionCount} transactions`}
+        />
+        <StatCard label="Account balance" value={fmt.money(metrics.accountBalance)} hint="Across all accounts" />
+      </StatStrip>
 
-              <div className="mb-3">
-                <p className="text-2xl md:text-3xl font-bold text-text-primary truncate">{metric.value}</p>
-              </div>
-
-              <p
-                className={`inline-flex items-center gap-1 text-sm font-medium ${
-                  metric.isPositive ? 'text-success-600' : 'text-danger-600'
-                }`}
-              >
-                {metric.isPositive ? <MdArrowUpward className="w-4 h-4" /> : <MdArrowDownward className="w-4 h-4" />}
-                {metric.change}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Top Spending Categories */}
-        <div className="lg:col-span-2 bg-surface rounded-xl border border-border shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-text-primary mb-6">Top Spending Categories</h2>
-
-          {topCategories.length > 0 ? (
-            <div className="space-y-4">
-              {topCategories.map((cat) => (
-                <div key={cat.category} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-text-primary">{cat.category}</span>
-                    <span className="text-sm font-bold text-text-primary">{fmt.money(cat.amount)}</span>
-                  </div>
-                  <div className="w-full bg-background rounded-full h-2">
-                    <div
-                      className="bg-danger-500 h-2 rounded-full transition-all"
-                      style={{ width: `${cat.percentage}%` }}
-                    />
-                  </div>
-                  <span className="text-xs text-text-secondary">{cat.percentage.toFixed(1)}%</span>
-                </div>
-              ))}
-            </div>
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+        <section className="xl:col-span-3 panel p-5">
+          <div className="flex items-baseline justify-between mb-4">
+            <h2 className="text-sm font-semibold text-text-primary">Cash flow, last 30 days</h2>
+            <Link to="/app/reports" className="text-xs text-text-secondary hover:text-text-primary">
+              Full report
+            </Link>
+          </div>
+          {hasCashFlow ? (
+            <CashFlowChart data={cashFlow} money={fmt.money} />
           ) : (
-            <p className="text-text-secondary">No spending data available</p>
+            <p className="py-16 text-sm text-text-secondary">No transactions in the last 30 days.</p>
           )}
-        </div>
+        </section>
 
-        {/* Quick Actions */}
-        <div className="bg-surface rounded-xl border border-border shadow-sm p-6">
-          <h2 className="text-lg font-semibold text-text-primary mb-6">Quick Actions</h2>
-
-          <div className="space-y-3">
-            {perms.canCreate && (
-              <>
-                <Link
-                  to="/app/transactions"
-                  className="flex items-center justify-center gap-2 w-full p-3 bg-accent-600 hover:bg-accent-700 text-white rounded-lg font-medium transition-colors shadow-sm hover:shadow-md"
-                >
-                  <MdAdd className="w-5 h-5" />
-                  New Transaction
-                </Link>
-                <Link
-                  to="/app/expenses"
-                  className="flex items-center justify-center gap-2 w-full p-3 bg-warning-500 hover:bg-warning-600 text-white rounded-lg font-medium transition-colors shadow-sm hover:shadow-md"
-                >
-                  <MdReceipt className="w-5 h-5" />
-                  Log Expense
-                </Link>
-              </>
-            )}
-            <Link
-              to="/app/reports"
-              className="flex items-center justify-center gap-2 w-full p-3 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors shadow-sm hover:shadow-md"
-            >
-              <MdBarChart className="w-5 h-5" />
-              Generate Report
-            </Link>
-            <Link
-              to="/app/accounts"
-              className="flex items-center justify-center gap-2 w-full p-3 border-2 border-accent-600 text-accent-600 hover:bg-accent-50 rounded-lg font-medium transition-colors"
-            >
-              <MdAccountBalanceWallet className="w-5 h-5" />
-              View Accounts
+        <section className="xl:col-span-2 panel overflow-hidden">
+          <div className="flex items-baseline justify-between px-5 pt-5 pb-3">
+            <h2 className="text-sm font-semibold text-text-primary">Where the money went</h2>
+            <Link to="/app/expenses" className="text-xs text-text-secondary hover:text-text-primary">
+              Expenses
             </Link>
           </div>
-
-          <div className="mt-8 pt-6 border-t border-border">
-            <h3 className="text-sm font-semibold text-text-secondary mb-4">Summary</h3>
-            <div className="space-y-4">
-              <div className="p-3 bg-primary-50 rounded-lg">
-                <p className="text-xs text-text-secondary mb-1">Total Transactions</p>
-                <p className="text-2xl font-bold text-text-primary">{metrics.transactionCount}</p>
-              </div>
-              <div className="p-3 bg-accent-50 rounded-lg">
-                <p className="text-xs text-text-secondary mb-1">Account Balance</p>
-                <p className="text-2xl font-bold text-text-primary">{fmt.money(metrics.accountBalance)}</p>
-              </div>
-            </div>
-          </div>
-        </div>
+          {topCategories.length > 0 ? (
+            <ul className="divide-y divide-border border-t border-border">
+              {topCategories.map((cat) => (
+                <li key={cat.category} className="px-5 py-3">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="text-sm text-text-primary truncate">{cat.category}</span>
+                    <span className="font-mono tabular text-sm text-text-primary">{fmt.money(cat.amount)}</span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="flex-1 h-1 bg-secondary-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-primary-700" style={{ width: `${Math.min(cat.percentage, 100)}%` }} />
+                    </div>
+                    <span className="w-12 text-right font-mono tabular text-xs text-text-secondary">
+                      {cat.percentage.toFixed(1)}%
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="px-5 pb-5 text-sm text-text-secondary">No spending recorded for this period.</p>
+          )}
+        </section>
       </div>
 
-      {/* Cash Flow Trend */}
-      <div className="bg-surface rounded-xl border border-border shadow-sm p-8">
-        <h2 className="text-lg font-semibold text-text-primary mb-6">30-Day Cash Flow Trend</h2>
-        {cashFlow.length > 0 ? (
-          <div className="overflow-x-auto">
-            <div className="flex gap-4 min-w-max" style={{ height: '200px', alignItems: 'flex-end' }}>
-              {cashFlow.map((day) => {
-                const inflowHeight = (day.inflow / maxAmount) * 150;
-                const outflowHeight = (day.outflow / maxAmount) * 150;
-
-                return (
-                  <div key={day.date} className="flex flex-col items-center gap-2">
-                    <div className="flex gap-1" style={{ alignItems: 'flex-end' }}>
-                      {day.inflow > 0 && (
-                        <div
-                          className="w-2 bg-success-500 rounded"
-                          style={{ height: `${inflowHeight}px` }}
-                          title={`Inflow: ${fmt.money(day.inflow)}`}
-                        />
-                      )}
-                      {day.outflow > 0 && (
-                        <div
-                          className="w-2 bg-danger-500 rounded"
-                          style={{ height: `${outflowHeight}px` }}
-                          title={`Outflow: ${fmt.money(day.outflow)}`}
-                        />
-                      )}
-                    </div>
-                    <span className="text-xs text-text-secondary">{day.date.slice(-2)}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-6 flex gap-6 justify-center">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-success-500 rounded" />
-                <span className="text-sm text-text-secondary">Inflow</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-danger-500 rounded" />
-                <span className="text-sm text-text-secondary">Outflow</span>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <p className="text-text-secondary text-center py-8">No transaction data available</p>
-        )}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-border border border-border rounded-xl overflow-hidden">
+        {[
+          { to: '/app/reports', title: 'Reports', text: 'Income statement, cash flow, balance sheet' },
+          { to: '/app/budgets', title: 'Budgets', text: 'Spending limits and alerts by category' },
+          { to: '/app/accounts', title: 'Accounts', text: 'Balances across bank and credit accounts' },
+        ].map((item) => (
+          <Link
+            key={item.to}
+            to={item.to}
+            className="group bg-surface px-5 py-4 hover:bg-secondary-50 transition-colors"
+          >
+            <span className="flex items-center justify-between text-sm font-medium text-text-primary">
+              {item.title}
+              <MdArrowForward className="w-4 h-4 text-secondary-400 group-hover:text-text-primary group-hover:translate-x-0.5 transition-transform" />
+            </span>
+            <span className="block mt-0.5 text-xs text-text-secondary">{item.text}</span>
+          </Link>
+        ))}
       </div>
     </div>
   );

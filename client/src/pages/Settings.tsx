@@ -1,4 +1,5 @@
 import { FC, FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { IconType } from 'react-icons';
 import {
   MdCheck,
@@ -12,6 +13,7 @@ import {
   MdVerifiedUser,
 } from 'react-icons/md';
 import { authService } from '../services/authService';
+import { organizationService } from '../services/organizationService';
 import { UserPreferences } from '../types';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -32,15 +34,15 @@ const SECTIONS: { id: SectionId; label: string; icon: IconType }[] = [
   { id: 'security', label: 'Security', icon: MdSecurity },
   { id: 'preferences', label: 'Preferences', icon: MdTune },
   { id: 'notifications', label: 'Notifications', icon: MdNotifications },
-  { id: 'access', label: 'Access & Role', icon: MdVerifiedUser },
+  { id: 'access', label: 'Business & Role', icon: MdVerifiedUser },
 ];
 
 const CURRENCIES = [
+  { code: 'TZS', name: 'Tanzanian Shilling' },
   { code: 'USD', name: 'US Dollar' },
   { code: 'EUR', name: 'Euro' },
   { code: 'GBP', name: 'British Pound' },
   { code: 'KES', name: 'Kenyan Shilling' },
-  { code: 'TZS', name: 'Tanzanian Shilling' },
   { code: 'UGX', name: 'Ugandan Shilling' },
   { code: 'NGN', name: 'Nigerian Naira' },
   { code: 'ZAR', name: 'South African Rand' },
@@ -58,17 +60,64 @@ const Card: FC<{ title: string; description?: string; children: ReactNode; foote
   children,
   footer,
 }) => (
-  <div className="bg-surface rounded-xl border border-border shadow-sm">
-    <div className="px-6 pt-6">
-      <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
+  <div className="panel">
+    <div className="px-6 pt-5">
+      <h2 className="text-base font-semibold text-text-primary">{title}</h2>
       {description && <p className="text-sm text-text-secondary mt-1">{description}</p>}
     </div>
     <div className="p-6">{children}</div>
     {footer && (
-      <div className="px-6 py-4 border-t border-border bg-background/60 rounded-b-xl flex justify-end gap-3">{footer}</div>
+      <div className="px-6 py-3 border-t border-border bg-secondary-50 rounded-b-xl flex justify-end gap-2">
+        {footer}
+      </div>
     )}
   </div>
 );
+
+/** Lets an admin rename the active business. */
+const BusinessName: FC = () => {
+  const { user, setUser } = useAuth();
+  const toast = useToast();
+  const current = user?.organization?.name ?? '';
+  const [name, setName] = useState(current);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const org = await organizationService.updateCurrent({ name: name.trim() });
+      if (user?.organization) {
+        setUser({
+          ...user,
+          organization: { ...user.organization, name: org.name },
+          organizations: user.organizations.map((o) => (o.id === user.organization?.id ? { ...o, name: org.name } : o)),
+        });
+      }
+      toast.success('Business name updated');
+    } catch (err) {
+      setError(errorMessage(err, 'Failed to rename business'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="mb-6 space-y-3">
+      {error && <ErrorBanner message={error} />}
+      <Field label="Business name" htmlFor="settings-org-name">
+        <div className="flex gap-2">
+          <Input id="settings-org-name" value={name} onChange={(e) => setName(e.target.value)} minLength={2} required />
+          <Button type="submit" variant="secondary" loading={saving} disabled={name.trim() === current}>
+            Rename
+          </Button>
+        </div>
+      </Field>
+    </form>
+  );
+};
 
 const passwordChecks = (pw: string) => [
   { label: 'At least 8 characters', ok: pw.length >= 8 },
@@ -81,7 +130,10 @@ const Settings: FC = () => {
   const { user, setUser, logout } = useAuth();
   const toast = useToast();
   const perms = usePermissions();
-  const [section, setSection] = useState<SectionId>('profile');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requested = searchParams.get('section') as SectionId | null;
+  const section: SectionId = SECTIONS.some((s) => s.id === requested) ? (requested as SectionId) : 'profile';
+  const setSection = (id: SectionId) => setSearchParams(id === 'profile' ? {} : { section: id }, { replace: true });
 
   const prefs: UserPreferences = { ...DEFAULT_PREFERENCES, ...user?.preferences };
 
@@ -102,7 +154,7 @@ const Settings: FC = () => {
   }, [user?.preferences]);
   const prefsDirty = useMemo(
     () => (Object.keys(draft) as (keyof UserPreferences)[]).some((k) => draft[k] !== prefs[k]),
-    [draft, prefs]
+    [draft, prefs],
   );
 
   // Password
@@ -178,11 +230,7 @@ const Settings: FC = () => {
 
   const prefsFooter = (
     <>
-      <Button
-        variant="secondary"
-        disabled={!prefsDirty || savingPrefs}
-        onClick={() => setDraft(prefs)}
-      >
+      <Button variant="secondary" disabled={!prefsDirty || savingPrefs} onClick={() => setDraft(prefs)}>
         Reset
       </Button>
       <Button onClick={savePreferences} loading={savingPrefs} disabled={!prefsDirty}>
@@ -200,20 +248,22 @@ const Settings: FC = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Settings" description="Manage your profile, security and display preferences" />
+      <PageHeader title="Settings" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6 items-start">
-        <nav className="bg-surface rounded-xl border border-border shadow-sm p-2 flex lg:flex-col gap-1 overflow-x-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-8 items-start">
+        <nav className="flex lg:flex-col gap-px overflow-x-auto lg:sticky lg:top-20">
           {SECTIONS.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setSection(id)}
               aria-current={section === id ? 'page' : undefined}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-                section === id ? 'bg-accent-50 text-accent-700' : 'text-text-secondary hover:bg-background hover:text-text-primary'
+              className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-sm whitespace-nowrap border transition-colors ${
+                section === id
+                  ? 'bg-surface border-border text-text-primary font-medium'
+                  : 'border-transparent text-text-secondary hover:bg-secondary-100 hover:text-text-primary'
               }`}
             >
-              <Icon className="w-5 h-5 flex-shrink-0" />
+              <Icon className={`w-[18px] h-[18px] flex-shrink-0 ${section === id ? 'text-accent-600' : ''}`} />
               {label}
             </button>
           ))}
@@ -241,13 +291,14 @@ const Settings: FC = () => {
                 }
               >
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="w-16 h-16 rounded-full bg-accent-600 text-white flex items-center justify-center text-xl font-semibold">
+                  <div className="w-12 h-12 rounded-full bg-primary-900 text-white flex items-center justify-center text-base font-medium">
                     {initials}
                   </div>
                   <div>
                     <p className="font-semibold text-text-primary">{user?.name}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <Badge tone="accent">{user?.role}</Badge>
+                      <span className="text-xs text-text-secondary">{user?.organization?.name}</span>
                       {user?.createdAt && (
                         <span className="text-xs text-text-secondary">
                           Member since {formatDate(user.createdAt, prefs.dateFormat)}
@@ -378,9 +429,15 @@ const Settings: FC = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="text-sm">
                     <p className="font-medium text-text-primary">Signed in as {user?.email}</p>
-                    <p className="text-text-secondary mt-0.5">Your session ends when you sign out or the token expires.</p>
+                    <p className="text-text-secondary mt-0.5">
+                      Your session ends when you sign out or the token expires.
+                    </p>
                   </div>
-                  <Button variant="danger" icon={<MdLogout className="w-4 h-4" />} onClick={() => setConfirmLogout(true)}>
+                  <Button
+                    variant="danger"
+                    icon={<MdLogout className="w-4 h-4" />}
+                    onClick={() => setConfirmLogout(true)}
+                  >
                     Sign Out
                   </Button>
                 </div>
@@ -389,7 +446,11 @@ const Settings: FC = () => {
           )}
 
           {section === 'preferences' && (
-            <Card title="Display preferences" description="Applied to amounts and dates throughout the app" footer={prefsFooter}>
+            <Card
+              title="Display preferences"
+              description="Applied to amounts and dates throughout the app"
+              footer={prefsFooter}
+            >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Field label="Currency" htmlFor="pref-currency">
                   <Select
@@ -408,7 +469,9 @@ const Settings: FC = () => {
                   <Select
                     id="pref-date"
                     value={draft.dateFormat}
-                    onChange={(e) => setDraft({ ...draft, dateFormat: e.target.value as UserPreferences['dateFormat'] })}
+                    onChange={(e) =>
+                      setDraft({ ...draft, dateFormat: e.target.value as UserPreferences['dateFormat'] })
+                    }
                   >
                     {DATE_FORMATS.map((f) => (
                       <option key={f} value={f}>
@@ -418,16 +481,16 @@ const Settings: FC = () => {
                   </Select>
                 </Field>
               </div>
-              <div className="mt-6 p-4 bg-background rounded-lg">
-                <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary mb-3">Preview</p>
+              <div className="mt-6 px-4 py-3 border border-dashed border-border rounded-md">
+                <p className="eyebrow mb-2">Preview</p>
                 <div className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
                   <span>
                     <span className="text-text-secondary">Amount: </span>
-                    <span className="font-semibold text-text-primary">{formatCurrency(12450.5, draft.currency)}</span>
+                    <span className="font-mono text-text-primary">{formatCurrency(1245050, draft.currency)}</span>
                   </span>
                   <span>
                     <span className="text-text-secondary">Date: </span>
-                    <span className="font-semibold text-text-primary">{formatDate(new Date(), draft.dateFormat)}</span>
+                    <span className="font-mono text-text-primary">{formatDate(new Date(), draft.dateFormat)}</span>
                   </span>
                 </div>
               </div>
@@ -435,61 +498,85 @@ const Settings: FC = () => {
           )}
 
           {section === 'notifications' && (
-            <Card title="Notifications" description="Choose what ledgerHQ should keep you informed about" footer={prefsFooter}>
+            <Card
+              title="Email notifications"
+              description={`Every notification appears under the bell at the top of the app. These switches choose which ones are also emailed to ${user?.email} from info@methynix.com.`}
+              footer={prefsFooter}
+            >
               <div className="divide-y divide-border">
                 <Toggle
                   id="notif-email"
-                  label="Email notifications"
-                  description="Account activity such as approvals and new users"
+                  label="Account activity"
+                  description="Role changes, account reactivation and, for admins, new sign-ups"
                   checked={draft.emailNotifications}
                   onChange={(v) => setDraft({ ...draft, emailNotifications: v })}
                 />
                 <Toggle
                   id="notif-budget"
                   label="Budget alerts"
-                  description="When spending crosses a budget's alert threshold"
+                  description="Once when spending crosses a budget's alert threshold"
                   checked={draft.budgetAlerts}
                   onChange={(v) => setDraft({ ...draft, budgetAlerts: v })}
                 />
                 <Toggle
                   id="notif-weekly"
                   label="Weekly summary"
-                  description="A digest of inflows, outflows and pending items every Monday"
+                  description="Money in, money out and pending items, every Monday at 08:00 EAT"
                   checked={draft.weeklySummary}
                   onChange={(v) => setDraft({ ...draft, weeklySummary: v })}
                 />
               </div>
+              <p className="mt-4 text-xs text-text-secondary">
+                Security emails (password changes, email address changes and account deactivation) are always sent.
+              </p>
             </Card>
           )}
 
-          {section === 'access' && user && (
-            <Card title="Access & role" description="What your account is allowed to do">
+          {section === 'access' && user?.role && (
+            <Card
+              title="Business & role"
+              description={`What you can do in ${user.organization?.name ?? 'this business'}. Your role can differ in each business you belong to.`}
+            >
+              {perms.isAdmin ? (
+                <BusinessName />
+              ) : (
+                <p className="mb-6 text-sm">
+                  <span className="text-text-secondary">Business: </span>
+                  <span className="text-text-primary font-medium">{user.organization?.name}</span>
+                </p>
+              )}
               <div className="flex items-center gap-3 mb-6">
                 <Badge tone="accent">{user.role}</Badge>
                 <span className="text-sm text-text-secondary">{ROLE_DESCRIPTIONS[user.role]}</span>
               </div>
-              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <ul className="divide-y divide-border border-y border-border">
                 {[
                   { label: 'View financial data', ok: true },
                   { label: 'Create records', ok: perms.canCreate },
                   { label: 'Edit records', ok: perms.canUpdate },
                   { label: 'Delete records', ok: perms.canDelete },
                   { label: 'Approve expenses', ok: perms.canApprove },
-                  { label: 'Manage users', ok: perms.isAdmin },
+                  { label: 'Manage the team and invitations', ok: perms.isAdmin },
                 ].map((item) => (
                   <li
                     key={item.label}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-lg border text-sm ${
-                      item.ok ? 'border-success-200 bg-success-50 text-success-800' : 'border-border text-text-secondary'
+                    className={`flex items-center justify-between py-2.5 text-sm ${
+                      item.ok ? 'text-text-primary' : 'text-text-secondary'
                     }`}
                   >
-                    {item.ok ? <MdCheck className="w-5 h-5" /> : <MdClose className="w-5 h-5" />}
                     {item.label}
+                    {item.ok ? (
+                      <MdCheck className="w-4 h-4 text-accent-600" aria-label="Allowed" />
+                    ) : (
+                      <MdClose className="w-4 h-4 text-secondary-400" aria-label="Not allowed" />
+                    )}
                   </li>
                 ))}
               </ul>
               {!perms.isAdmin && (
-                <p className="mt-6 text-xs text-text-secondary">Need more access? Ask an administrator to change your role.</p>
+                <p className="mt-6 text-xs text-text-secondary">
+                  Need more access? Ask an administrator to change your role.
+                </p>
               )}
             </Card>
           )}

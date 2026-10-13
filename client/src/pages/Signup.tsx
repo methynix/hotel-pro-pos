@@ -1,18 +1,15 @@
 import { FC, useState, FormEvent } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { MdMail, MdLock, MdPerson } from 'react-icons/md';
+import AuthLayout from '../components/layout/AuthLayout';
 
 // Matches the server-side rule in authController.register.
 const MIN_PASSWORD_LENGTH = 8;
 
-const inputClass =
-  'w-full pl-10 pr-4 py-3 border border-border rounded-lg text-text-primary placeholder-text-secondary focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition-all';
-const iconClass = 'absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary';
-
 const Signup: FC = () => {
   const { register, isAuthenticated } = useAuth();
   const [name, setName] = useState('');
+  const [organizationName, setOrganizationName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -38,7 +35,7 @@ const Signup: FC = () => {
 
     setIsLoading(true);
     try {
-      await register(name.trim(), email.trim(), password);
+      await register(name.trim(), email.trim(), password, organizationName.trim());
     } catch (err: any) {
       setError(err?.message || 'Sign up failed. Please try again.');
     } finally {
@@ -47,138 +44,113 @@ const Signup: FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 py-12">
-      {/* Top accent bar */}
-      <div className="absolute top-0 left-0 right-0 h-1 bg-accent-600" />
-
-      <div className="w-full max-w-md">
-        {/* Logo Section */}
-        <div className="mb-10 text-center">
-          <div className="mb-6 inline-block p-4 bg-primary-50 rounded-2xl shadow-md">
-            <img
-              src="/logoHQ.jpg"
-              alt="ledgerHQ"
-              className="w-16 h-16 rounded-xl object-cover"
-            />
-          </div>
-          <h1 className="text-4xl font-bold text-text-primary mb-2">Create your account</h1>
-          <p className="text-text-secondary text-sm font-medium">Get started with ledgerHQ</p>
+    <AuthLayout
+      title="Set up your business"
+      subtitle={
+        <>
+          Already have an account?{' '}
+          <Link to="/" className="text-text-primary underline underline-offset-4">
+            Sign in
+          </Link>
+        </>
+      }
+    >
+      {error && (
+        <p role="alert" className="mb-5 border-l-2 border-danger-500 bg-danger-50 px-3 py-2 text-sm text-danger-800">
+          {error}
+        </p>
+      )}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label htmlFor="name" className="block text-xs font-medium text-text-secondary mb-1.5">
+            Full name
+          </label>
+          <input
+            id="name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoComplete="name"
+            required
+            className="w-full h-10 px-3 bg-surface border border-border rounded-md text-sm text-text-primary placeholder:text-secondary-400 focus:border-primary-900 focus:ring-1 focus:ring-primary-900"
+          />
+        </div>
+        <div>
+          <label htmlFor="organizationName" className="block text-xs font-medium text-text-secondary mb-1.5">
+            Business name
+          </label>
+          <input
+            id="organizationName"
+            type="text"
+            value={organizationName}
+            onChange={(e) => setOrganizationName(e.target.value)}
+            autoComplete="organization"
+            minLength={2}
+            required
+            className="w-full h-10 px-3 bg-surface border border-border rounded-md text-sm text-text-primary placeholder:text-secondary-400 focus:border-primary-900 focus:ring-1 focus:ring-primary-900"
+          />
+        </div>
+        <div>
+          <label htmlFor="email" className="block text-xs font-medium text-text-secondary mb-1.5">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            required
+            className="w-full h-10 px-3 bg-surface border border-border rounded-md text-sm text-text-primary placeholder:text-secondary-400 focus:border-primary-900 focus:ring-1 focus:ring-primary-900"
+          />
+        </div>
+        <div>
+          <label htmlFor="password" className="block text-xs font-medium text-text-secondary mb-1.5">
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={MIN_PASSWORD_LENGTH}
+            required
+            className="w-full h-10 px-3 bg-surface border border-border rounded-md text-sm text-text-primary placeholder:text-secondary-400 focus:border-primary-900 focus:ring-1 focus:ring-primary-900"
+          />
+          <p className="mt-1.5 text-xs text-text-secondary">At least {MIN_PASSWORD_LENGTH} characters</p>
+        </div>
+        <div>
+          <label htmlFor="confirmPassword" className="block text-xs font-medium text-text-secondary mb-1.5">
+            Confirm password
+          </label>
+          <input
+            id="confirmPassword"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            autoComplete="new-password"
+            required
+            className="w-full h-10 px-3 bg-surface border border-border rounded-md text-sm text-text-primary placeholder:text-secondary-400 focus:border-primary-900 focus:ring-1 focus:ring-primary-900"
+          />
         </div>
 
-        {/* Signup Card */}
-        <div className="bg-surface rounded-2xl shadow-lg p-8 border border-border">
-          {error && (
-            <div className="mb-6 p-4 bg-danger-50 border-l-4 border-danger-500 rounded-lg">
-              <p className="text-sm text-danger-700">{error}</p>
-            </div>
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full h-10 bg-primary-900 hover:bg-primary-700 text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+        >
+          {isLoading && (
+            <span className="w-3.5 h-3.5 border-[1.5px] border-white border-t-transparent rounded-full animate-spin" />
           )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label htmlFor="name" className="block text-sm font-semibold text-text-primary mb-2">
-                Full Name
-              </label>
-              <div className="relative">
-                <MdPerson className={iconClass} />
-                <input
-                  id="name"
-                  type="text"
-                  autoComplete="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Jane Doe"
-                  required
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-text-primary mb-2">
-                Email Address
-              </label>
-              <div className="relative">
-                <MdMail className={iconClass} />
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  required
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-text-primary mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <MdLock className={iconClass} />
-                <input
-                  id="password"
-                  type="password"
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  minLength={MIN_PASSWORD_LENGTH}
-                  required
-                  className={inputClass}
-                />
-              </div>
-              <p className="mt-1 text-xs text-text-secondary">
-                At least {MIN_PASSWORD_LENGTH} characters
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-semibold text-text-primary mb-2">
-                Confirm Password
-              </label>
-              <div className="relative">
-                <MdLock className={iconClass} />
-                <input
-                  id="confirmPassword"
-                  type="password"
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3 mt-7 bg-accent-600 hover:bg-accent-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg"
-            >
-              {isLoading ? (
-                <div className="flex items-center justify-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Creating account...</span>
-                </div>
-              ) : (
-                'Create Account'
-              )}
-            </button>
-          </form>
-
-          <p className="mt-6 text-center text-sm text-text-secondary">
-            Already have an account?{' '}
-            <Link to="/" className="font-semibold text-accent-600 hover:text-accent-700">
-              Sign in
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
+          {isLoading ? 'Creating account' : 'Create account'}
+        </button>
+        <p className="text-xs text-text-secondary">
+          You'll be the administrator of this business and can invite your team afterwards. Joining an existing
+          business? Ask its administrator for an invitation link instead.
+        </p>
+      </form>
+    </AuthLayout>
   );
 };
 

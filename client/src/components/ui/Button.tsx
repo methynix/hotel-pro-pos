@@ -10,11 +10,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-accent-600 hover:bg-accent-700 text-white shadow-sm',
-  secondary: 'bg-surface border border-border text-text-primary hover:bg-background',
-  danger: 'bg-danger-600 hover:bg-danger-700 text-white shadow-sm',
-  success: 'bg-success-600 hover:bg-success-700 text-white shadow-sm',
-  ghost: 'text-text-secondary hover:bg-background hover:text-text-primary',
+  primary: 'bg-primary-900 text-white hover:bg-primary-700 border border-primary-900',
+  secondary: 'bg-surface text-text-primary border border-border hover:border-secondary-400',
+  danger: 'bg-danger-600 text-white hover:bg-danger-700 border border-danger-600',
+  success: 'bg-accent-600 text-white hover:bg-accent-700 border border-accent-600',
+  ghost: 'text-text-secondary hover:text-text-primary hover:bg-secondary-100 border border-transparent',
 };
 
 const Button: FC<ButtonProps> = ({
@@ -31,13 +31,13 @@ const Button: FC<ButtonProps> = ({
   <button
     type={type}
     disabled={disabled || loading}
-    className={`inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-      size === 'sm' ? 'px-3 py-1.5 text-sm' : 'px-4 py-2 text-sm'
+    className={`inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+      size === 'sm' ? 'h-8 px-3 text-sm' : 'h-9 px-3.5 text-sm'
     } ${VARIANTS[variant]} ${className}`}
     {...rest}
   >
     {loading ? (
-      <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+      <span className="w-3.5 h-3.5 border-[1.5px] border-current border-t-transparent rounded-full animate-spin" />
     ) : (
       icon
     )}
