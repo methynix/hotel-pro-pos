@@ -13,6 +13,7 @@ import reportRoutes from './reports';
 import notificationRoutes from './notifications';
 import organizationRoutes from './organizations';
 import invitationRoutes from './invitations';
+import auditRoutes from './audit';
 
 const router = Router();
 
@@ -31,5 +32,6 @@ router.use('/reports', reportRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/invitations', invitationRoutes);
+router.use('/audit-logs', auditRoutes);
 
 export default router;

@@ -13,6 +13,7 @@ import {
   MdClose,
   MdOutlinePieChart,
   MdRepeat,
+  MdHistory,
 } from 'react-icons/md';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -29,7 +30,7 @@ interface NavItem {
 }
 
 // Every role can open every finance page; what they can do there is
-// limited by utils/permissions. Only user management is admin-only.
+// limited by utils/permissions. Users and the audit log are admin-only.
 const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
   { items: [{ label: 'Overview', path: '/app', icon: MdOutlineDashboard }] },
   {
@@ -53,6 +54,7 @@ const NAV_GROUPS: { title?: string; items: NavItem[] }[] = [
     items: [
       { label: 'Categories', path: '/app/categories', icon: MdOutlineCategory },
       { label: 'Users', path: '/app/users', icon: MdOutlinePeople, adminOnly: true },
+      { label: 'Audit Log', path: '/app/audit', icon: MdHistory, adminOnly: true },
       { label: 'Settings', path: '/app/settings', icon: MdOutlineSettings },
     ],
   },

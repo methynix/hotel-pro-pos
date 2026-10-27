@@ -213,6 +213,25 @@ export const authController = {
     }
   },
 
+  async refreshToken(req: Request, res: Response, next: NextFunction) {
+    try {
+      const token = req.cookies?.refreshToken || req.body?.refreshToken;
+      if (!token) {
+        throw new AuthenticationError('Refresh token required');
+      }
+
+      const payload = authService.verifyToken(token);
+      const user = await User.findById(payload.userId);
+      if (!user || !user.isActive) {
+        throw new AuthenticationError('Invalid or expired token');
+      }
+
+      await startSession(res, user);
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async logout(req: Request, res: Response, next: NextFunction) {
     try {
       res.clearCookie('refreshToken', {

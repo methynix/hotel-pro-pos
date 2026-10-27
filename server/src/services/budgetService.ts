@@ -37,6 +37,7 @@ async function spendingFor(budget: IBudget, startDate: Date, endDate: Date): Pro
         categoryId: (budget.categoryId as any)?._id ?? budget.categoryId,
         type: 'expense',
         status: 'completed',
+        isVoided: { $ne: true },
         transactionDate: { $gte: startDate, $lte: endDate },
       },
     },

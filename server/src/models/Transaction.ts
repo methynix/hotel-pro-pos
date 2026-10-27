@@ -4,7 +4,7 @@ import { minorUnits, moneyJSON } from '../utils/money';
 export type TransactionType = 'income' | 'expense' | 'transfer';
 export type TransactionStatus = 'completed' | 'pending' | 'failed';
 
-// Only completed transactions move account balances. Never write these
+// Only completed, non-voided transactions move account balances. Never write these
 // directly; go through ledgerService so balances stay in step.
 export interface ITransaction extends Document {
   organizationId: mongoose.Types.ObjectId;
@@ -25,6 +25,14 @@ export interface ITransaction extends Document {
   paymentMethod?: string;
   reference?: string;
   recurringTransactionId?: mongoose.Types.ObjectId;
+  /** Set when the transaction pays an approved expense. */
+  expenseId?: mongoose.Types.ObjectId;
+  // Ledger entries are never deleted. Voiding keeps the record, reverses its
+  // effect on balances, and excludes it from every total.
+  isVoided: boolean;
+  voidedAt?: Date;
+  voidedBy?: mongoose.Types.ObjectId;
+  voidReason?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +53,11 @@ const transactionSchema = new Schema<ITransaction>(
     paymentMethod: String,
     reference: String,
     recurringTransactionId: { type: Schema.Types.ObjectId, ref: 'RecurringTransaction' },
+    expenseId: { type: Schema.Types.ObjectId, ref: 'Expense' },
+    isVoided: { type: Boolean, default: false },
+    voidedAt: Date,
+    voidedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    voidReason: { type: String, trim: true, maxlength: 500 },
   },
   { timestamps: true, toJSON: moneyJSON(['amount']) }
 );

@@ -6,7 +6,9 @@ import { ConflictError, NotFoundError, ValidationError } from '../utils/errors';
 import { orgScope } from '../middleware/auth';
 import { ledgerService } from '../services/ledgerService';
 import { parse } from '../utils/validate';
+import { formatMinor } from '../utils/money';
 import { createAccountSchema, updateAccountSchema } from '../validators/account';
+import { actorFrom, auditService } from '../services/auditService';
 
 export const accountController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
@@ -28,6 +30,13 @@ export const accountController = {
         createdBy: req.user!.userId,
       });
       sendSuccess(res, 201, account);
+      auditService.record(actorFrom(req), {
+        action: 'account.created',
+        entityType: 'account',
+        entityId: account._id,
+        summary: `Added account ${account.name} with opening balance ${formatMinor(account.openingBalance, account.currency)}`,
+        after: account,
+      });
     } catch (error) {
       next(error);
     }
@@ -40,6 +49,8 @@ export const accountController = {
       const updated = await ledgerService.inTransaction(async (session) => {
         const account = await Account.findOne({ _id: req.params.id, ...orgScope(req) }).session(session);
         if (!account) throw new NotFoundError('Account');
+        const before = account.toJSON();
+        const previousOpening = account.openingBalance;
 
         // Type and currency decide how past transactions were applied, so
         // they are fixed once the account has any.
@@ -55,6 +66,21 @@ export const accountController = {
         }
         account.set(changes);
         await account.save({ session });
+        await auditService.record(
+          actorFrom(req),
+          {
+            action: 'account.updated',
+            entityType: 'account',
+            entityId: account._id,
+            summary:
+              changes.openingBalance !== undefined && changes.openingBalance !== previousOpening
+                ? `Changed opening balance of ${account.name}, shifting its current balance to ${formatMinor(account.currentBalance, account.currency)}`
+                : `Edited account ${account.name}`,
+            before,
+            after: account,
+          },
+          session
+        );
         return account;
       });
 
@@ -80,6 +106,13 @@ export const accountController = {
 
       await Account.deleteOne({ _id: account._id });
       sendSuccess(res, 200, { message: 'Account deleted' });
+      auditService.record(actorFrom(req), {
+        action: 'account.deleted',
+        entityType: 'account',
+        entityId: account._id,
+        summary: `Deleted unused account ${account.name}`,
+        before: account,
+      });
     } catch (error) {
       next(error);
     }

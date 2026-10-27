@@ -85,7 +85,7 @@ export const receiptController = {
         throw new AuthorizationError('Not authorized to delete this receipt');
       }
 
-      await Receipt.findByIdAndDelete(req.params.id);
+      await Receipt.deleteOne({ _id: receipt._id, ...orgScope(req) });
       sendSuccess(res, 200, { message: 'Receipt deleted' });
     } catch (error) {
       next(error);

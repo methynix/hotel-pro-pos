@@ -9,6 +9,7 @@ import ExpenseManagement from '../pages/ExpenseManagement';
 import AccountsManagement from '../pages/AccountsManagement';
 import ReportsManagement from '../pages/ReportsManagement';
 import UsersManagement from '../pages/UsersManagement';
+import AuditLog from '../pages/AuditLog';
 import CategoriesManagement from '../pages/CategoriesManagement';
 import BudgetManagement from '../pages/BudgetManagement';
 import RecurringTransactionManagement from '../pages/RecurringTransactionManagement';
@@ -74,6 +75,14 @@ export const routes: RouteObject[] = [
             element: (
               <ProtectedRoute allowedRoles={['admin']}>
                 <UsersManagement />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: 'audit',
+            element: (
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AuditLog />
               </ProtectedRoute>
             ),
           },

@@ -40,6 +40,7 @@ async function totals(organizationId: string, from: Date, to?: Date) {
       $match: {
         organizationId: oid(organizationId),
         status: 'completed',
+        isVoided: { $ne: true },
         type: { $in: ['income', 'expense'] },
         transactionDate: to ? { $gte: from, $lt: to } : { $gte: from },
       },
@@ -75,13 +76,24 @@ export const analyticsService = {
     }
 
     const previousStartDate = new Date(startDate);
-    previousStartDate.setMonth(startDate.getMonth() - 1);
+    switch (timeframe) {
+      case 'quarter':
+        previousStartDate.setMonth(startDate.getMonth() - 3);
+        break;
+      case 'year':
+        previousStartDate.setFullYear(startDate.getFullYear() - 1);
+        break;
+      case 'month':
+      default:
+        previousStartDate.setMonth(startDate.getMonth() - 1);
+        break;
+    }
 
     const [current, previous, accounts, pendingCount] = await Promise.all([
       totals(organizationId, startDate),
       totals(organizationId, previousStartDate, startDate),
       Account.find({ organizationId, status: 'active' }),
-      Transaction.countDocuments({ organizationId, status: 'pending' }),
+      Transaction.countDocuments({ organizationId, status: 'pending', isVoided: { $ne: true } }),
     ]);
 
     // Money held in checking and savings, less what is owed on credit.
@@ -104,7 +116,7 @@ export const analyticsService = {
 
   async getTopCategories(organizationId: string, limit = 5): Promise<CategorySpending[]> {
     const rows = await Transaction.aggregate<{ _id: mongoose.Types.ObjectId; total: number }>([
-      { $match: { organizationId: oid(organizationId), type: 'expense', status: 'completed' } },
+      { $match: { organizationId: oid(organizationId), type: 'expense', status: 'completed', isVoided: { $ne: true } } },
       { $group: { _id: '$categoryId', total: { $sum: '$amount' } } },
       { $sort: { total: -1 } },
     ]);
@@ -128,6 +140,7 @@ export const analyticsService = {
         $match: {
           organizationId: oid(organizationId),
           status: 'completed',
+          isVoided: { $ne: true },
           type: { $in: ['income', 'expense'] },
           transactionDate: { $gte: startDate },
         },
@@ -157,18 +170,30 @@ export const analyticsService = {
 
   async getMonthlyComparison(organizationId: string): Promise<Record<string, { inflow: number; outflow: number; net: number }>> {
     const now = new Date();
-    const months: Record<string, { inflow: number; outflow: number; net: number }> = {};
-
-    for (let i = 0; i < 12; i++) {
+    const monthConfigs = Array.from({ length: 12 }, (_, i) => {
       const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
       const monthKey = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
-      const t = await totals(organizationId, start, end);
-      months[monthKey] = {
-        inflow: fromMinor(t.income),
-        outflow: fromMinor(t.expense),
-        net: fromMinor(t.income - t.expense),
-      };
+      return { start, end, monthKey };
+    });
+
+    const results = await Promise.all(
+      monthConfigs.map(async ({ start, end, monthKey }) => {
+        const t = await totals(organizationId, start, end);
+        return {
+          monthKey,
+          data: {
+            inflow: fromMinor(t.income),
+            outflow: fromMinor(t.expense),
+            net: fromMinor(t.income - t.expense),
+          },
+        };
+      })
+    );
+
+    const months: Record<string, { inflow: number; outflow: number; net: number }> = {};
+    for (const { monthKey, data } of results) {
+      months[monthKey] = data;
     }
 
     return months;

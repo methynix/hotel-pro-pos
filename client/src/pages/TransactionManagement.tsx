@@ -4,8 +4,8 @@ import {
   MdAdd,
   MdArrowDownward,
   MdArrowUpward,
+  MdBlock,
   MdClose,
-  MdDelete,
   MdEdit,
   MdFilterList,
   MdPrint,
@@ -16,6 +16,7 @@ import { transactionService } from '../services/transactionService';
 import { categoryService } from '../services/categoryService';
 import { accountService } from '../services/accountService';
 import { receiptService } from '../services/receiptService';
+import { newIdempotencyKey } from '../services/crud';
 import { Account, Category, Transaction, TransactionType } from '../types';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { usePermissions } from '../hooks/usePermissions';
@@ -28,14 +29,13 @@ import Button from '../components/ui/Button';
 import IconButton from '../components/ui/IconButton';
 import Badge, { BadgeTone } from '../components/ui/Badge';
 import Modal from '../components/ui/Modal';
-import ConfirmDialog from '../components/ui/ConfirmDialog';
 import EmptyState from '../components/ui/EmptyState';
 import ErrorBanner from '../components/ui/ErrorBanner';
 import StatCard, { StatStrip } from '../components/ui/StatCard';
 import SearchInput from '../components/ui/SearchInput';
 import Pagination from '../components/ui/Pagination';
 import ReadOnlyNotice from '../components/ui/ReadOnlyNotice';
-import { Field, Input, Select } from '../components/ui/FormField';
+import { Field, Input, Select, Textarea, Toggle } from '../components/ui/FormField';
 import { SkeletonHeader, SkeletonStatCards, SkeletonTable } from '../components/ui/Skeleton';
 
 type TxStatus = Transaction['status'];
@@ -64,6 +64,7 @@ const EMPTY_FILTERS = {
   status: '',
   type: '',
   accountId: '',
+  hideVoided: false,
 };
 
 const EMPTY_FORM = {
@@ -118,8 +119,12 @@ const TransactionManagement: FC = () => {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [toDelete, setToDelete] = useState<Transaction | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  // One key per opened form, reused if the same submission is retried.
+  const [submitKey, setSubmitKey] = useState('');
+  const [toVoid, setToVoid] = useState<Transaction | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const [voiding, setVoiding] = useState(false);
+  const [voidError, setVoidError] = useState<string | null>(null);
   const [printing, setPrinting] = useState<string | null>(null);
 
   const updateFilter = (patch: Partial<typeof EMPTY_FILTERS>) => {
@@ -142,6 +147,7 @@ const TransactionManagement: FC = () => {
           category.toLowerCase().includes(term) ||
           accounts.some((name) => name.toLowerCase().includes(term)) ||
           t.reference?.toLowerCase().includes(term)) &&
+        (!filters.hideVoided || !t.isVoided) &&
         (!filters.status || t.status === filters.status) &&
         (!filters.type || t.type === filters.type) &&
         (!filters.accountId || touchesAccount(t, filters.accountId)) &&
@@ -153,10 +159,10 @@ const TransactionManagement: FC = () => {
     });
   }, [transactions, filters, categoryById, accountById]);
 
-  // Only completed income and expense count as money in and out; transfers
-  // just move money between your own accounts.
+  // Only completed, non-voided income and expense count as money in and out;
+  // transfers just move money between your own accounts.
   const totals = useMemo(() => {
-    const completed = filtered.filter((t) => t.status === 'completed');
+    const completed = filtered.filter((t) => t.status === 'completed' && !t.isVoided);
     const inflow = completed.filter((t) => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const outflow = completed.filter((t) => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     return { inflow, outflow, net: inflow - outflow };
@@ -174,6 +180,7 @@ const TransactionManagement: FC = () => {
 
   const openCreate = () => {
     setEditing(null);
+    setSubmitKey(newIdempotencyKey());
     setForm({
       ...EMPTY_FORM,
       transactionDate: todayInput(),
@@ -246,16 +253,12 @@ const TransactionManagement: FC = () => {
         setTransactions((list) => list.map((t) => (t._id === updated._id ? updated : t)));
         toast.success('Transaction updated');
       } else {
-        const created = await transactionService.createTransaction(payload);
+        const created = await transactionService.createTransaction(payload, submitKey);
         setTransactions((list) => [created, ...list]);
         toast.success('Transaction recorded');
       }
       setFormOpen(false);
-      // Balances changed on the server; keep the account list current.
-      accountService
-        .getAllAccounts()
-        .then((fresh) => setData((d) => ({ ...d, accounts: fresh })))
-        .catch(() => undefined);
+      refreshAccounts();
     } catch (err) {
       setFormError(errorMessage(err, 'Failed to save transaction'));
     } finally {
@@ -286,18 +289,35 @@ const TransactionManagement: FC = () => {
     }
   };
 
-  const handleDelete = async () => {
-    if (!toDelete) return;
-    setDeleting(true);
+  // Balances changed on the server; keep the account list current.
+  const refreshAccounts = () =>
+    accountService
+      .getAllAccounts()
+      .then((fresh) => setData((d) => ({ ...d, accounts: fresh })))
+      .catch(() => undefined);
+
+  const openVoid = (t: Transaction) => {
+    setToVoid(t);
+    setVoidReason('');
+    setVoidError(null);
+  };
+
+  const handleVoid = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!toVoid) return;
+    if (voidReason.trim().length < 3) return setVoidError('Give a short reason, so the audit log explains it');
+    setVoiding(true);
+    setVoidError(null);
     try {
-      await transactionService.deleteTransaction(toDelete._id);
-      setTransactions((list) => list.filter((t) => t._id !== toDelete._id));
-      toast.success('Transaction deleted');
-      setToDelete(null);
+      const voided = await transactionService.voidTransaction(toVoid._id, voidReason.trim());
+      setTransactions((list) => list.map((t) => (t._id === voided._id ? voided : t)));
+      toast.success(toVoid.expenseId ? 'Payment voided; the expense is back to approved' : 'Transaction voided');
+      setToVoid(null);
+      refreshAccounts();
     } catch (err) {
-      toast.error(errorMessage(err, 'Failed to delete transaction'));
+      setVoidError(errorMessage(err, 'Failed to void transaction'));
     } finally {
-      setDeleting(false);
+      setVoiding(false);
     }
   };
 
@@ -391,6 +411,15 @@ const TransactionManagement: FC = () => {
                 ))}
               </Select>
             </Field>
+            <div className="flex items-end">
+              <Toggle
+                id="f-hide-voided"
+                label="Hide voided"
+                description="Voided entries stay in the ledger, crossed out"
+                checked={filters.hideVoided}
+                onChange={(hideVoided) => updateFilter({ hideVoided })}
+              />
+            </div>
             <Field label="Status" htmlFor="f-status">
               <Select id="f-status" value={filters.status} onChange={(e) => updateFilter({ status: e.target.value })}>
                 <option value="">All statuses</option>
@@ -492,11 +521,14 @@ const TransactionManagement: FC = () => {
                   {pageItems.map((tx) => {
                     const meta = TYPE_META[tx.type];
                     const Icon = meta.icon;
+                    const voided = !!tx.isVoided;
                     return (
-                      <tr key={tx._id}>
+                      <tr key={tx._id} className={voided ? 'opacity-60' : ''}>
                         <td className="text-text-secondary whitespace-nowrap">{fmt.date(tx.transactionDate)}</td>
                         <td>
-                          <SafeText className="font-medium text-text-primary">{tx.description}</SafeText>
+                          <SafeText className={`font-medium text-text-primary ${voided ? 'line-through' : ''}`}>
+                            {tx.description}
+                          </SafeText>
                           <p className="text-xs text-text-secondary mt-0.5">
                             {tx.type === 'transfer' ? (
                               <>
@@ -508,7 +540,13 @@ const TransactionManagement: FC = () => {
                               </>
                             )}
                             {tx.reference && <> · Ref {tx.reference}</>}
+                            {tx.expenseId && <> · Expense payment</>}
                           </p>
+                          {voided && tx.voidReason && (
+                            <SafeText as="p" className="text-xs text-danger-700 mt-0.5">
+                              {`Voided: ${tx.voidReason}`}
+                            </SafeText>
+                          )}
                         </td>
                         <td>
                           <Badge tone={meta.tone} icon={<Icon className="w-3.5 h-3.5" />}>
@@ -516,37 +554,39 @@ const TransactionManagement: FC = () => {
                           </Badge>
                         </td>
                         <td
-                          className={`num ${
-                            tx.type === 'income' ? 'text-success-700' : tx.type === 'transfer' ? 'text-text-secondary' : 'text-text-primary'
+                          className={`num ${voided ? 'line-through text-text-secondary' : ''} ${
+                            voided ? '' : tx.type === 'income' ? 'text-success-700' : tx.type === 'transfer' ? 'text-text-secondary' : 'text-text-primary'
                           }`}
                         >
                           {tx.type === 'expense' ? '-' : tx.type === 'income' ? '+' : ''}
                           {fmt.money(tx.amount)}
                         </td>
                         <td>
-                          <Badge tone={STATUS_TONES[tx.status]}>{tx.status}</Badge>
+                          {voided ? <Badge tone="neutral">voided</Badge> : <Badge tone={STATUS_TONES[tx.status]}>{tx.status}</Badge>}
                         </td>
                         <td>
-                          <div className="flex items-center justify-end gap-1">
-                            <IconButton
-                              label="Print receipt"
-                              tone="neutral"
-                              disabled={printing === tx._id}
-                              onClick={() => handlePrintReceipt(tx._id)}
-                            >
-                              <MdPrint className="w-4 h-4" />
-                            </IconButton>
-                            {perms.canUpdate && (
-                              <IconButton label="Edit transaction" tone="accent" onClick={() => openEdit(tx)}>
-                                <MdEdit className="w-4 h-4" />
+                          {!voided && (
+                            <div className="flex items-center justify-end gap-1">
+                              <IconButton
+                                label="Print receipt"
+                                tone="neutral"
+                                disabled={printing === tx._id}
+                                onClick={() => handlePrintReceipt(tx._id)}
+                              >
+                                <MdPrint className="w-4 h-4" />
                               </IconButton>
-                            )}
-                            {perms.canDelete && (
-                              <IconButton label="Delete transaction" tone="danger" onClick={() => setToDelete(tx)}>
-                                <MdDelete className="w-4 h-4" />
-                              </IconButton>
-                            )}
-                          </div>
+                              {perms.canUpdate && !tx.expenseId && (
+                                <IconButton label="Edit transaction" tone="accent" onClick={() => openEdit(tx)}>
+                                  <MdEdit className="w-4 h-4" />
+                                </IconButton>
+                              )}
+                              {perms.canDelete && (
+                                <IconButton label="Void transaction" tone="danger" onClick={() => openVoid(tx)}>
+                                  <MdBlock className="w-4 h-4" />
+                                </IconButton>
+                              )}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -751,20 +791,42 @@ const TransactionManagement: FC = () => {
         </form>
       </Modal>
 
-      <ConfirmDialog
-        open={!!toDelete}
-        title="Delete transaction"
-        message={
+      <Modal
+        open={!!toVoid}
+        onClose={() => setToVoid(null)}
+        dismissible={!voiding}
+        title="Void transaction"
+        footer={
           <>
-            Delete <strong className="text-text-primary">{toDelete?.description}</strong> ({fmt.money(toDelete?.amount)}
-            )? Its effect on account balances will be reversed. This cannot be undone.
+            <Button variant="secondary" onClick={() => setToVoid(null)} disabled={voiding}>
+              Cancel
+            </Button>
+            <Button type="submit" form="void-form" variant="danger" loading={voiding}>
+              Void Transaction
+            </Button>
           </>
         }
-        confirmLabel="Delete Transaction"
-        loading={deleting}
-        onConfirm={handleDelete}
-        onCancel={() => setToDelete(null)}
-      />
+      >
+        <form id="void-form" onSubmit={handleVoid} className="space-y-4">
+          {voidError && <ErrorBanner message={voidError} />}
+          <p className="text-sm text-text-secondary">
+            <strong className="text-text-primary">{toVoid?.description}</strong> ({fmt.money(toVoid?.amount)}) stays in
+            the ledger crossed out, and its effect on account balances is reversed.
+            {toVoid?.expenseId && ' The expense it paid goes back to approved, so it can be paid again correctly.'} To
+            correct a mistake, void it and record the right transaction.
+          </p>
+          <Field label="Reason" htmlFor="void-reason" required hint="Shown on the transaction and in the audit log">
+            <Textarea
+              id="void-reason"
+              rows={3}
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+              placeholder="Entered twice by mistake"
+              required
+            />
+          </Field>
+        </form>
+      </Modal>
     </div>
   );
 };

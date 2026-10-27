@@ -6,7 +6,7 @@ import cookieParser from 'cookie-parser';
 import env from './config/env';
 import { errorHandler, asyncHandler } from './middleware/errorHandler';
 import { csrfTokenGenerator, csrfTokenValidator } from './middleware/csrf';
-import { authLimiter, generalLimiter } from './middleware/rateLimiter';
+import { authLimiter, inviteLimiter, generalLimiter } from './middleware/rateLimiter';
 import { noCacheMiddleware } from './middleware/cacheControl';
 import { sendSuccess, sendError } from './utils/response';
 
@@ -45,8 +45,8 @@ app.use(compression());
 app.use(cors({
   origin: [env.CLIENT_URL, 'http://localhost:5173'],
   credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
-  exposedHeaders: ['x-csrf-token'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token', 'Idempotency-Key'],
+  exposedHeaders: ['x-csrf-token', 'Idempotent-Replayed'],
 }));
 
 app.use(express.json({ limit: '1mb' }));
@@ -73,7 +73,7 @@ app.get('/health', asyncHandler(async (req: Request, res: Response) => {
 app.use('/api/v1/auth/login', authLimiter);
 app.use('/api/v1/auth/register', authLimiter);
 // Invite tokens are guessable only in theory, but rate-limit the public endpoints anyway.
-app.use('/api/v1/invitations/token', authLimiter);
+app.use('/api/v1/invitations/token', inviteLimiter);
 app.use('/api/v1', generalLimiter);
 app.use('/api/v1', csrfTokenValidator, v1Routes);
 

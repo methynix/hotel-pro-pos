@@ -84,6 +84,12 @@ export interface Transaction {
   status: 'completed' | 'pending' | 'failed';
   paymentMethod?: string;
   reference?: string;
+  /** Set when this transaction paid an approved expense. */
+  expenseId?: string;
+  /** Voided entries stay in the ledger, crossed out, and count toward nothing. */
+  isVoided?: boolean;
+  voidedAt?: string;
+  voidReason?: string;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -94,8 +100,12 @@ export interface Expense {
   amount: number;
   description: string;
   categoryId: string;
-  status: 'pending' | 'approved' | 'rejected';
+  /** pending -> approved -> paid, or pending -> rejected. */
+  status: 'pending' | 'approved' | 'rejected' | 'paid';
   notes?: string;
+  transactionId?: string;
+  accountId?: string;
+  paidAt?: string;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -164,6 +174,20 @@ export interface RecurringTransaction {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AuditLogEntry {
+  _id: string;
+  userId: string | null;
+  userName: string;
+  userEmail?: string;
+  action: string;
+  entityType: string;
+  entityId?: string;
+  summary: string;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  createdAt: string;
 }
 
 export interface Attachment {

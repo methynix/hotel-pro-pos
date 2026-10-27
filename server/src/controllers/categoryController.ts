@@ -9,6 +9,7 @@ import { ConflictError, NotFoundError } from '../utils/errors';
 import { orgScope } from '../middleware/auth';
 import { parse } from '../utils/validate';
 import { createCategorySchema, updateCategorySchema } from '../validators/category';
+import { actorFrom, auditService } from '../services/auditService';
 
 /** True when any record points at the category. */
 const isInUse = async (categoryId: unknown) =>
@@ -34,6 +35,13 @@ export const categoryController = {
       const input = parse(createCategorySchema, req.body);
       const category = await Category.create({ ...input, ...orgScope(req), createdBy: req.user!.userId });
       sendSuccess(res, 201, category);
+      auditService.record(actorFrom(req), {
+        action: 'category.created',
+        entityType: 'category',
+        entityId: category._id,
+        summary: `Added ${category.type} category ${category.name}`,
+        after: category,
+      });
     } catch (error) {
       next(error);
     }
@@ -49,9 +57,18 @@ export const categoryController = {
         throw new ConflictError(`${category.name} is already used, so it can't switch between income and expense`);
       }
 
+      const before = category.toJSON();
       category.set(changes);
       await category.save();
       sendSuccess(res, 200, category);
+      auditService.record(actorFrom(req), {
+        action: 'category.updated',
+        entityType: 'category',
+        entityId: category._id,
+        summary: `Edited category ${category.name}`,
+        before,
+        after: category,
+      });
     } catch (error) {
       next(error);
     }
@@ -70,6 +87,13 @@ export const categoryController = {
 
       await Category.deleteOne({ _id: category._id });
       sendSuccess(res, 200, { message: 'Category deleted' });
+      auditService.record(actorFrom(req), {
+        action: 'category.deleted',
+        entityType: 'category',
+        entityId: category._id,
+        summary: `Deleted category ${category.name}`,
+        before: category,
+      });
     } catch (error) {
       next(error);
     }

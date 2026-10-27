@@ -1,6 +1,7 @@
 import { RecurringTransaction } from '../models/RecurringTransaction';
 import { ledgerService } from './ledgerService';
 import { budgetService } from './budgetService';
+import { SYSTEM_ACTOR } from './auditService';
 
 const MAX_CATCH_UP = 31; // runs per entry per sweep, so a long outage can't flood the ledger
 
@@ -45,8 +46,7 @@ export const recurringTransactionService = {
           const occurrence = recurring.nextDate;
           await ledgerService.inTransaction(async (session) => {
             await ledgerService.create(
-              recurring.organizationId.toString(),
-              recurring.createdBy.toString(),
+              SYSTEM_ACTOR(recurring.organizationId.toString()),
               {
                 type: recurring.type,
                 amount: recurring.amount,
@@ -58,7 +58,7 @@ export const recurringTransactionService = {
                 paymentMethod: 'Recurring',
                 recurringTransactionId: recurring._id.toString(),
               },
-              session
+              { session, createdBy: recurring.createdBy.toString() }
             );
             recurring.lastExecuted = occurrence;
             recurring.nextDate = this.calculateNextDate(recurring.frequency, occurrence);

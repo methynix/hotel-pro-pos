@@ -7,6 +7,7 @@ import { sendSuccess } from '../utils/response';
 import { AuthenticationError, NotFoundError } from '../utils/errors';
 import { parse } from '../utils/validate';
 import { createOrganizationSchema, updateOrganizationSchema } from '../validators/organization';
+import { actorFrom, auditService } from '../services/auditService';
 
 export const organizationController = {
   /** Any signed-in user can found another organization and becomes its admin. */
@@ -38,12 +39,21 @@ export const organizationController = {
   async updateCurrent(req: Request, res: Response, next: NextFunction) {
     try {
       const changes = parse(updateOrganizationSchema, req.body);
+      const before = await Organization.findById(req.user?.organizationId);
       const organization = await Organization.findByIdAndUpdate(req.user?.organizationId, changes, {
         new: true,
         runValidators: true,
       });
       if (!organization) throw new NotFoundError('Organization');
       sendSuccess(res, 200, organization);
+      auditService.record(actorFrom(req), {
+        action: 'organization.updated',
+        entityType: 'organization',
+        entityId: organization._id,
+        summary: before?.name !== organization.name ? `Renamed the business from ${before?.name} to ${organization.name}` : 'Updated business settings',
+        before,
+        after: organization,
+      });
     } catch (error) {
       next(error);
     }

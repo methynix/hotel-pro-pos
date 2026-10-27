@@ -6,7 +6,9 @@ import { sendSuccess } from '../utils/response';
 import { NotFoundError, ValidationError } from '../utils/errors';
 import { orgScope } from '../middleware/auth';
 import { parse } from '../utils/validate';
+import { formatMinor } from '../utils/money';
 import { createRecurringSchema, updateRecurringSchema } from '../validators/recurring';
+import { actorFrom, auditService } from '../services/auditService';
 
 /** Checks the account and category belong to the organization and match the type. */
 async function assertReferences(req: Request, input: { type: string; accountId: string; categoryId: string }) {
@@ -28,6 +30,13 @@ export const recurringTransactionController = {
       await assertReferences(req, input);
       const recurring = await RecurringTransaction.create({ ...input, ...orgScope(req), createdBy: req.user!.userId });
       sendSuccess(res, 201, recurring);
+      auditService.record(actorFrom(req), {
+        action: 'recurring.created',
+        entityType: 'recurring',
+        entityId: recurring._id,
+        summary: `Scheduled ${recurring.frequency} ${recurring.type} "${recurring.description}" of ${formatMinor(recurring.amount)}`,
+        after: recurring,
+      });
     } catch (error) {
       next(error);
     }
@@ -58,6 +67,7 @@ export const recurringTransactionController = {
       const recurring = await RecurringTransaction.findOne({ _id: req.params.id, ...orgScope(req) });
       if (!recurring) throw new NotFoundError('Recurring transaction');
 
+      const before = recurring.toJSON();
       recurring.set(changes);
       await assertReferences(req, {
         type: recurring.type,
@@ -67,6 +77,14 @@ export const recurringTransactionController = {
       recurring.lastError = undefined;
       await recurring.save();
       sendSuccess(res, 200, recurring);
+      auditService.record(actorFrom(req), {
+        action: 'recurring.updated',
+        entityType: 'recurring',
+        entityId: recurring._id,
+        summary: `Edited schedule "${recurring.description}"`,
+        before,
+        after: recurring,
+      });
     } catch (error) {
       next(error);
     }
@@ -79,6 +97,12 @@ export const recurringTransactionController = {
       recurring.isActive = !recurring.isActive;
       await recurring.save();
       sendSuccess(res, 200, recurring);
+      auditService.record(actorFrom(req), {
+        action: recurring.isActive ? 'recurring.resumed' : 'recurring.paused',
+        entityType: 'recurring',
+        entityId: recurring._id,
+        summary: `${recurring.isActive ? 'Resumed' : 'Paused'} schedule "${recurring.description}"`,
+      });
     } catch (error) {
       next(error);
     }
@@ -86,9 +110,16 @@ export const recurringTransactionController = {
 
   async delete(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await RecurringTransaction.deleteOne({ _id: req.params.id, ...orgScope(req) });
-      if (!result.deletedCount) throw new NotFoundError('Recurring transaction');
+      const deleted = await RecurringTransaction.findOneAndDelete({ _id: req.params.id, ...orgScope(req) });
+      if (!deleted) throw new NotFoundError('Recurring transaction');
       sendSuccess(res, 200, { message: 'Recurring transaction deleted' });
+      auditService.record(actorFrom(req), {
+        action: 'recurring.deleted',
+        entityType: 'recurring',
+        entityId: deleted._id,
+        summary: `Deleted schedule "${deleted.description}"`,
+        before: deleted,
+      });
     } catch (error) {
       next(error);
     }

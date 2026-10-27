@@ -5,7 +5,8 @@ import { orgScope } from '../middleware/auth';
 import { ledgerService, LedgerInput } from '../services/ledgerService';
 import { budgetService } from '../services/budgetService';
 import { parse } from '../utils/validate';
-import { createTransactionSchema, updateTransactionSchema } from '../validators/transaction';
+import { createTransactionSchema, updateTransactionSchema, voidTransactionSchema } from '../validators/transaction';
+import { actorFrom } from '../services/auditService';
 
 export const transactionController = {
   async getAll(req: Request, res: Response, next: NextFunction) {
@@ -28,7 +29,7 @@ export const transactionController = {
   async create(req: Request, res: Response, next: NextFunction) {
     try {
       const input = parse(createTransactionSchema, req.body);
-      const transaction = await ledgerService.create(req.user!.organizationId!, req.user!.userId, input as LedgerInput);
+      const transaction = await ledgerService.create(actorFrom(req), input as LedgerInput);
       sendSuccess(res, 201, transaction);
       if (transaction.type === 'expense') budgetService.checkAndNotify(req.user!.organizationId!);
     } catch (error) {
@@ -39,7 +40,7 @@ export const transactionController = {
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const changes = parse(updateTransactionSchema, req.body);
-      const updated = await ledgerService.update(req.user!.organizationId!, req.params.id as string, changes);
+      const updated = await ledgerService.update(actorFrom(req), req.params.id as string, changes);
       sendSuccess(res, 200, updated);
       budgetService.checkAndNotify(req.user!.organizationId!);
     } catch (error) {
@@ -47,11 +48,13 @@ export const transactionController = {
     }
   },
 
-  async delete(req: Request, res: Response, next: NextFunction) {
+  /** Ledger entries are never deleted; voiding reverses them and keeps the record. */
+  async void(req: Request, res: Response, next: NextFunction) {
     try {
-      const removed = await ledgerService.remove(req.user!.organizationId!, req.params.id as string);
-      sendSuccess(res, 200, { message: 'Transaction deleted' });
-      if (removed.type === 'expense') budgetService.checkAndNotify(req.user!.organizationId!);
+      const { reason } = parse(voidTransactionSchema, req.body);
+      const voided = await ledgerService.void(actorFrom(req), req.params.id as string, reason);
+      sendSuccess(res, 200, voided);
+      if (voided.type === 'expense') budgetService.checkAndNotify(req.user!.organizationId!);
     } catch (error) {
       next(error);
     }

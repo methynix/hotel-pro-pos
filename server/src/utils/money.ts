@@ -26,6 +26,10 @@ export const moneyJSON = (fields: string[]) => ({
   },
 });
 
+/** Human-readable amount for messages and audit summaries, e.g. "TZS 85,000.50". */
+export const formatMinor = (minor: number, currency = 'TZS'): string =>
+  `${currency} ${fromMinor(minor).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
 const MAX_AMOUNT = 1e13; // well inside Number.MAX_SAFE_INTEGER once in cents
 
 /** A positive amount in major units from the client, converted to minor units. */

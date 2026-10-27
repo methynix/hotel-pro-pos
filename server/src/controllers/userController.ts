@@ -6,6 +6,7 @@ import { NotFoundError, ValidationError } from '../utils/errors';
 import { parse } from '../utils/validate';
 import { updateMemberSchema } from '../validators/organization';
 import { notificationService } from '../services/notificationService';
+import { actorFrom, auditService } from '../services/auditService';
 
 export const ROLE_LABELS: Record<string, string> = {
   admin: 'Administrator (full access)',
@@ -77,6 +78,16 @@ export const userController = {
       membership.role = role;
       await user.save();
       sendSuccess(res, 200, toMember(user, organizationId));
+      if (previous !== role) {
+        auditService.record(actorFrom(req), {
+          action: 'member.role_changed',
+          entityType: 'member',
+          entityId: user._id,
+          summary: `Changed ${user.name} (${user.email}) from ${previous} to ${role}`,
+          before: { role: previous },
+          after: { role },
+        });
+      }
 
       if (previous !== role) {
         const org = await Organization.findById(organizationId).select('name');
@@ -115,6 +126,12 @@ export const userController = {
       }
       await user.save();
       sendSuccess(res, 200, { message: 'Member removed' });
+      auditService.record(actorFrom(req), {
+        action: 'member.removed',
+        entityType: 'member',
+        entityId: user._id,
+        summary: `Removed ${user.name} (${user.email}) from the business`,
+      });
 
       const org = await Organization.findById(organizationId).select('name');
       notificationService.notify(user, {

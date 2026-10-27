@@ -8,6 +8,7 @@ import { organizationService } from '../services/organizationService';
 import { emailService, renderEmail } from '../services/emailService';
 import { notificationService } from '../services/notificationService';
 import { startSession } from './authController';
+import { actorFrom, auditService } from '../services/auditService';
 import { ROLE_LABELS } from './userController';
 import { sendSuccess } from '../utils/response';
 import { AuthorizationError, ConflictError, NotFoundError } from '../utils/errors';
@@ -80,6 +81,12 @@ export const invitationController = {
       );
 
       sendSuccess(res, 201, { invitation, inviteUrl, emailed });
+      auditService.record(actorFrom(req), {
+        action: 'invitation.created',
+        entityType: 'invitation',
+        entityId: invitation._id,
+        summary: `Invited ${email} as ${role}`,
+      });
     } catch (error) {
       next(error);
     }
@@ -104,13 +111,19 @@ export const invitationController = {
   /** Admin: revokes a pending invitation. */
   async revoke(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await Invitation.deleteOne({
+      const revoked = await Invitation.findOneAndDelete({
         _id: req.params.id,
         organizationId: req.user!.organizationId,
         acceptedAt: { $exists: false },
       });
-      if (!result.deletedCount) throw new NotFoundError('Invitation');
+      if (!revoked) throw new NotFoundError('Invitation');
       sendSuccess(res, 200, { message: 'Invitation revoked' });
+      auditService.record(actorFrom(req), {
+        action: 'invitation.revoked',
+        entityType: 'invitation',
+        entityId: revoked._id,
+        summary: `Revoked the invitation for ${revoked.email}`,
+      });
     } catch (error) {
       next(error);
     }
@@ -154,6 +167,16 @@ export const invitationController = {
         await created.save({ session });
         invitation.acceptedAt = new Date();
         await invitation.save({ session });
+        await auditService.record(
+          { organizationId: invitation.organizationId.toString(), userId: created._id.toString() },
+          {
+            action: 'member.joined',
+            entityType: 'member',
+            entityId: created._id,
+            summary: `${name} (${invitation.email}) accepted an invitation and joined as ${invitation.role}`,
+          },
+          session
+        );
         return created;
       });
 
@@ -173,7 +196,7 @@ export const invitationController = {
 
       // The invite was addressed to one person; a forwarded link can't be
       // used to join under a different account.
-      if (user.email !== invitation.email) {
+      if (user.email.toLowerCase() !== invitation.email.toLowerCase()) {
         throw new AuthorizationError(`This invitation is for ${invitation.email}. Sign in with that email to accept it.`);
       }
 
@@ -182,6 +205,16 @@ export const invitationController = {
         await user.save({ session });
         invitation.acceptedAt = new Date();
         await invitation.save({ session });
+        await auditService.record(
+          { organizationId: invitation.organizationId.toString(), userId: user._id.toString() },
+          {
+            action: 'member.joined',
+            entityType: 'member',
+            entityId: user._id,
+            summary: `${user.name} (${user.email}) accepted an invitation and joined as ${invitation.role}`,
+          },
+          session
+        );
       });
 
       sendSuccess(res, 200, await organizationService.toPublicUser(user));

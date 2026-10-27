@@ -9,8 +9,45 @@ import { ValidationError } from '../utils/errors';
 // testing isn't silently broken.
 const CSRF_COOKIE_NAME = env.HTTPS_ONLY ? '__Host-csrf-token' : 'csrf-token';
 
+function safeCompare(a: string, b: string): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function verifyCsrfToken(fullToken: unknown): string | null {
+  if (typeof fullToken !== 'string') return null;
+  const dotIndex = fullToken.indexOf('.');
+  if (dotIndex === -1) return null;
+  const token = fullToken.slice(0, dotIndex);
+  const signature = fullToken.slice(dotIndex + 1);
+  if (!token || !signature) return null;
+
+  const expectedSignature = crypto
+    .createHmac('sha256', env.CSRF_TOKEN_SECRET)
+    .update(token)
+    .digest('hex');
+
+  if (safeCompare(signature, expectedSignature)) {
+    return token;
+  }
+  return null;
+}
+
 export const csrfTokenGenerator = (req: Request, res: Response, next: NextFunction): void => {
-  // Generate CSRF token
+  // If the request already includes a valid CSRF cookie, reuse the token so
+  // parallel/concurrent requests don't overwrite each other's cookie.
+  const existingCookie = req.cookies?.[CSRF_COOKIE_NAME];
+  const validToken = verifyCsrfToken(existingCookie);
+
+  if (validToken) {
+    res.set('x-csrf-token', validToken);
+    return next();
+  }
+
+  // Generate a new CSRF token
   const token = crypto.randomBytes(32).toString('hex');
   const signature = crypto
     .createHmac('sha256', env.CSRF_TOKEN_SECRET)
@@ -23,9 +60,6 @@ export const csrfTokenGenerator = (req: Request, res: Response, next: NextFuncti
   res.cookie(CSRF_COOKIE_NAME, fullToken, {
     httpOnly: true,
     secure: env.HTTPS_ONLY,
-    // Client and server are deployed on different origins, so the cookie
-    // must be SameSite=None to be sent at all; that requires Secure, which
-    // is why this is tied to HTTPS_ONLY (must be true in production).
     sameSite: env.HTTPS_ONLY ? 'none' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days (Express expects ms)
   });
@@ -39,7 +73,7 @@ export const csrfTokenGenerator = (req: Request, res: Response, next: NextFuncti
 };
 
 export const csrfTokenValidator = (req: Request, res: Response, next: NextFunction): void => {
-  // Skip for GET requests
+  // Skip for safe methods
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     return next();
   }
@@ -49,19 +83,13 @@ export const csrfTokenValidator = (req: Request, res: Response, next: NextFuncti
     throw new ValidationError('CSRF token required', { csrf: 'Missing CSRF token' });
   }
 
-  const cookieToken = req.cookies[CSRF_COOKIE_NAME];
+  const cookieToken = req.cookies?.[CSRF_COOKIE_NAME];
   if (!cookieToken) {
     throw new ValidationError('CSRF token missing from cookies');
   }
 
-  // Verify token signature
-  const [cookieTokenValue, cookieSignature] = cookieToken.split('.');
-  const expectedSignature = crypto
-    .createHmac('sha256', env.CSRF_TOKEN_SECRET)
-    .update(cookieTokenValue)
-    .digest('hex');
-
-  if (cookieSignature !== expectedSignature || token !== cookieTokenValue) {
+  const validToken = verifyCsrfToken(cookieToken);
+  if (!validToken || !safeCompare(token, validToken)) {
     throw new ValidationError('Invalid CSRF token');
   }
 

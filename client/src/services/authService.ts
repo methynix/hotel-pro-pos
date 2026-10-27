@@ -44,6 +44,14 @@ export const authService = {
     await axiosInstance.post(`${AUTH_BASE_URL}/change-password`, { currentPassword, newPassword });
   },
 
+  async refreshToken() {
+    const response = await axiosInstance.post<ApiResponse<AuthResponse>>(
+      `${AUTH_BASE_URL}/refresh`,
+      {}
+    );
+    return response.data;
+  },
+
   async logout() {
     const response = await axiosInstance.post<ApiResponse<void>>(
       `${AUTH_BASE_URL}/logout`

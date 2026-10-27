@@ -46,6 +46,7 @@ async function sendWeeklySummaries(): Promise<void> {
         Transaction.find({
           organizationId,
           status: 'completed',
+          isVoided: { $ne: true },
           type: { $in: ['income', 'expense'] },
           transactionDate: { $gte: weekStart, $lt: slot },
         }),

@@ -2,8 +2,10 @@ import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'ax
 import { ApiError } from '../types';
 import { tokenStorage } from '../utils/tokenStorage';
 
+const rawBaseURL = import.meta.env.VITE_APP_BASE_URL || 'http://localhost:5000/api/v1';
+
 const axiosInstance: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_APP_BASE_URL || 'http://localhost:5000/api/v1',
+  baseURL: rawBaseURL,
   timeout: 10000,
   headers: { 'Content-Type': 'application/json' },
   // Client and server are on different origins in production, so cookies
@@ -20,8 +22,15 @@ let csrfToken: string | null = null;
 let primingPromise: Promise<string | null> | null = null;
 const MUTATING_METHODS = new Set(['post', 'put', 'patch', 'delete']);
 
-// /health lives at the server root, not under /api/v1.
-const healthUrl = new URL('/health', axiosInstance.defaults.baseURL as string).toString();
+// /health lives at the server root, not under /api/v1. Safe URL parsing:
+function resolveHealthUrl(base: string): string {
+  try {
+    return new URL('/health', base).toString();
+  } catch {
+    return '/health';
+  }
+}
+const healthUrl = resolveHealthUrl(rawBaseURL);
 
 function primeCsrfToken(): Promise<string | null> {
   if (!primingPromise) {
@@ -34,6 +43,24 @@ function primeCsrfToken(): Promise<string | null> {
   }
   return primingPromise;
 }
+
+// Queue for requests awaiting token refresh to prevent multiple concurrent refresh calls
+let isRefreshing = false;
+let refreshQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (err: unknown) => void;
+}> = [];
+
+const processRefreshQueue = (error: unknown, token: string | null = null) => {
+  refreshQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token!);
+    }
+  });
+  refreshQueue = [];
+};
 
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
@@ -61,11 +88,59 @@ axiosInstance.interceptors.response.use(
     if (freshToken) csrfToken = freshToken;
     return response;
   },
-  (error: AxiosError<{ message?: string; error?: { message?: string } }>) => {
+  async (error: AxiosError<{ message?: string; error?: { message?: string } }>) => {
+    const originalRequest = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     const freshToken = error.response?.headers['x-csrf-token'] as string | undefined;
     if (freshToken) csrfToken = freshToken;
 
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    const requestUrl = originalRequest?.url || '';
+    const isAuthRoute =
+      requestUrl.includes('/auth/login') ||
+      requestUrl.includes('/auth/register') ||
+      requestUrl.includes('/auth/refresh') ||
+      requestUrl.includes('/auth/logout');
+
+    // Attempt token refresh on 401 if we haven't already retried this request
+    if (status === 401 && originalRequest && !originalRequest._retry && !isAuthRoute) {
+      if (isRefreshing) {
+        return new Promise<string>((resolve, reject) => {
+          refreshQueue.push({ resolve, reject });
+        })
+          .then((newToken) => {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return axiosInstance(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const { data } = await axios.post<{ data: { accessToken: string } }>(
+          `${rawBaseURL}/auth/refresh`,
+          {},
+          { withCredentials: true }
+        );
+        const newAccessToken = data.data.accessToken;
+        tokenStorage.set(newAccessToken, true);
+        axiosInstance.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`;
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        processRefreshQueue(null, newAccessToken);
+        return axiosInstance(originalRequest);
+      } catch (refreshErr) {
+        processRefreshQueue(refreshErr, null);
+        tokenStorage.clear();
+        window.dispatchEvent(new Event('auth-logout'));
+        if (!window.location.pathname.includes('/login')) window.location.href = '/';
+        return Promise.reject(refreshErr);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    if (status === 401 && !isAuthRoute) {
       tokenStorage.clear();
       window.dispatchEvent(new Event('auth-logout'));
       if (!window.location.pathname.includes('/login')) window.location.href = '/';

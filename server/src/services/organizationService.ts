@@ -73,9 +73,12 @@ export const organizationService = {
 
   /** Users holding one of `roles` in an organization, e.g. to notify its admins. */
   async membersWithRoles(organizationId: string, roles: UserRole[]): Promise<IUser[]> {
+    const orgId = mongoose.isValidObjectId(organizationId)
+      ? new mongoose.Types.ObjectId(organizationId)
+      : organizationId;
     return User.find({
       isActive: true,
-      organizations: { $elemMatch: { organizationId, role: { $in: roles } } },
+      organizations: { $elemMatch: { organizationId: orgId, role: { $in: roles } } },
     });
   },
 };

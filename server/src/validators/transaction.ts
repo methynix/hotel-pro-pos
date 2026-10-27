@@ -26,3 +26,7 @@ export const createTransactionSchema = z.object({
 export const updateTransactionSchema = z.object(fields).partial();
 
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;
+
+export const voidTransactionSchema = z.object({
+  reason: z.string().trim().min(3, 'Give a reason for voiding (at least 3 characters)').max(500),
+});

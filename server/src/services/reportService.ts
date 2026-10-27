@@ -19,13 +19,14 @@ const endOfDay = (date: Date) => {
   return d;
 };
 
-// Income and expense transactions dated within the period. Transfers move
+// Non-voided income and expense transactions dated within the period. Transfers move
 // money between the organization's own accounts, so they never count as
 // income or expense. Amounts are summed in minor units, reported in major.
 const periodTransactions = (organizationId: string, startDate: Date, endDate: Date, status?: string) =>
   Transaction.find({
     organizationId,
     type: { $in: ['income', 'expense'] },
+    isVoided: { $ne: true },
     transactionDate: { $gte: startDate, $lte: endOfDay(endDate) },
     ...(status ? { status } : {}),
   });

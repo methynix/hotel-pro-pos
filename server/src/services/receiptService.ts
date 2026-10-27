@@ -1,7 +1,7 @@
 import { Receipt, IReceipt } from '../models/Receipt';
 import { Transaction } from '../models/Transaction';
 import { Account } from '../models/Account';
-import { NotFoundError } from '../utils/errors';
+import { ConflictError, NotFoundError } from '../utils/errors';
 import { fromMinor } from '../utils/money';
 
 // The receipt schema has a fixed set of methods; map the app's labels onto it.
@@ -24,6 +24,9 @@ export const receiptService = {
     const transaction = await Transaction.findOne({ _id: transactionId, organizationId });
     if (!transaction) {
       throw new NotFoundError('Transaction');
+    }
+    if (transaction.isVoided) {
+      throw new ConflictError('This transaction was voided, so no receipt can be issued for it');
     }
 
     const account = await Account.findById(transaction.accountId ?? transaction.fromAccountId).select('currency');
